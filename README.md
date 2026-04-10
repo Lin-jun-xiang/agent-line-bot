@@ -58,12 +58,9 @@
 * `replit/render/ngrok`：**免費部署你自己的 FastAPI**
 * `CronJob`：免費發送定時請求，實現定時推播消息
 
-## 🧠 免費 GPT 選項
+## 🧠 免費 GPT API
 
-由於 `g4f` 依賴於逆向工程來調用 OpenAI 的 API，可能會不穩定。因此，作者建議使用 **Zhipu AI** 開放平台作為免費 GPT API 的替代方案。
-
-* `g4f`：使用逆向工程調用 OpenAI API
-* `zhipuai`：**Zhipu AI** 開放平台提供免費 GPT API。訪問 [官方網站](https://open.bigmodel.cn/dev/howuse/glm-4) 註冊帳戶，無需信用卡或費用。在 [個人中心](https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys) 添加 API 金鑰，如下所示。將此 API 金鑰設置在環境變量中使用此 GPT 選項。
+本專案使用 **Zhipu AI** 開放平台作為免費 GPT API。訪問 [官方網站](https://open.bigmodel.cn/dev/howuse/glm-4) 註冊帳戶，無需信用卡或費用。在 [個人中心](https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys) 添加 API 金鑰，如下所示。將此 API 金鑰設置在環境變量 `GPT_API_KEY` 中。
     ![](static/images/2025-01-02-10-18-10.png)
 
 ## 🎈 安裝步驟
@@ -94,12 +91,10 @@
 
     ### 本地部署步驟
 
-    #### 2.1 啟動 Python FastAPI Server
-    ```bash
-    $env:LINE_CHANNEL_SECRET="..."; $env:LINE_CHANNEL_ACCESS_TOKEN="..."; $env:SERPAPI_API_KEY="..."; $env:GPT_METHOD="..."; $env:GPT_API_KEY="..."; python main.py
+    #### 2.1 啟動 Python FastAPI Server    ```bash
+    $env:LINE_CHANNEL_SECRET="..."; $env:LINE_CHANNEL_ACCESS_TOKEN="..."; $env:SERPAPI_API_KEY="..."; $env:GPT_API_KEY="..."; python main.py
     ```
-    * `GPT_METHOD`：選擇 `g4f` 或 `zhipuai`
-    * `GPT_API_KEY`：如果使用 `zhipuai` 方法，提供你的 API 金鑰
+    * `GPT_API_KEY`：提供你的 Zhipu AI API 金鑰
 
     #### 2.2 使用 ngrok 建立隧道
     使用本地電腦作為服務器來部署 API：
@@ -128,13 +123,11 @@
     #### 選項 1：Render 部署
     1. 前往 [Render](https://render.com/) 並註冊帳戶
     2. 點擊 "New Web Service"
-    3. 連接你的 **GitHub** 存儲庫
-    4. 設置環境變數：
+    3. 連接你的 **GitHub** 存儲庫    4. 設置環境變數：
     - `LINE_CHANNEL_SECRET`
     - `LINE_CHANNEL_ACCESS_TOKEN`
     - `SERPAPI_API_KEY`（可選）
-    - `GPT_METHOD`
-    - `GPT_API_KEY`（如果使用 zhipuai）
+    - `GPT_API_KEY`
     5. 部署完成後，使用提供的 URL 作為 webhook
     6. 結合 [cronjob](https://console.cron-job.org/jobs) 觸發定時調用服務，避免服務閒置過久關閉
         ![](static/images/2025-07-22-16-32-04.png)

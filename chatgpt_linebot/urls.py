@@ -77,7 +77,7 @@ def agent(query: str) -> tuple[str]:
     message = [{'role': 'user', 'content': prompt}]
 
     try:
-        response = chat_completion(memory=message, method=config.GPT_METHOD)
+        response = chat_completion(memory=message)
 
         result = extract_legal_json(response)
         tool = result.get('tool', 'chat_completion')
@@ -200,24 +200,24 @@ def handle_message(event) -> None:
             memory.append(source_id, 'user', f"{user_message}")
 
         if tool in ['chat_completion']:
-            response = chat_completion(source_id, memory, config.GPT_METHOD)
+            response = chat_completion(source_id, memory)
             send_text_reply(reply_token, response)
 
         elif tool in ['image_inference']:
-            response = chat_completion(source_id, memory, config.GPT_METHOD, zhipuai_type='image_inference')
+            response = chat_completion(source_id, memory, zhipuai_type='image_inference')
             send_text_reply(reply_token, response)
 
         elif tool in ['generate_image']:
-            response = chat_completion(source_id, input_query, config.GPT_METHOD, zhipuai_type='image_gen')
+            response = chat_completion(source_id, input_query, zhipuai_type='image_gen')
             send_image_reply(reply_token, response)
 
         elif tool in ['text_gen_video']:
-            response = chat_completion(source_id, input_query, config.GPT_METHOD, zhipuai_type='text_gen_video')
+            response = chat_completion(source_id, input_query, zhipuai_type='text_gen_video')
             send_video_reply(reply_token, response.video_result[0].url, response.video_result[0].cover_image_url)
             response = str(response)
 
         elif tool in ['img_gen_video']:
-            response = chat_completion(source_id, memory, config.GPT_METHOD, zhipuai_type='img_gen_video')
+            response = chat_completion(source_id, memory, zhipuai_type='img_gen_video')
             send_video_reply(reply_token, response.video_result[0].url, response.video_result[0].cover_image_url)
             response = str(response)
 
@@ -236,7 +236,7 @@ def handle_message(event) -> None:
                 "如果搜尋結果不足以回答，請誠實告知。"
             )
             memory.append(source_id, 'user', summarize_prompt)
-            response = chat_completion(source_id, memory, config.GPT_METHOD)
+            response = chat_completion(source_id, memory)
             send_text_reply(reply_token, response)
 
         else:

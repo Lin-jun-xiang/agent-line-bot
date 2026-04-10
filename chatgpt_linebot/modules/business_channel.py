@@ -10,8 +10,6 @@ from chatgpt_linebot.prompts import cws_channel_template
 
 sys.path.append(".")
 
-import config
-
 
 class CWArticleScraper:
     """
@@ -138,6 +136,5 @@ class CWArticleScraper:
         if article_details:
             response = chat_completion(
                 memory=[{"role": "user", "content": cws_channel_template+str(article_details)}],
-                method=config.GPT_METHOD,
             )
             return response

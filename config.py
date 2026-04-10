@@ -15,8 +15,5 @@ SERPAPI_API_KEY = os.environ.get('SERPAPI_API_KEY')
 # RAPID API
 RAPID = os.environ.get('RAPID')
 
-# GPT METHOD: g4f/zhipuai
-GPT_METHOD = os.environ.get('GPT_METHOD', 'g4f')
-
-# ZHIPUAI API: if using zhipuai gpt method
+# ZHIPUAI API
 GPT_API_KEY = os.environ.get('GPT_API_KEY')

@@ -20,6 +20,7 @@ def web_search(query: str, max_results: int = 5) -> str:
     try:
         with DDGS() as ddgs:
             results = list(ddgs.text(query, region="wt-wt", max_results=max_results))
+            print(f"Web Search: {results}")
 
         if not results:
             return "找不到相關搜尋結果。"
