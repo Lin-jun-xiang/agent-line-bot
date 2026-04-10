@@ -1,8 +1,8 @@
-# ChatGPT Line Bot
+# Agent Line Bot
 
 ## 🤖 簡介
 
-將 GPT Bot 整合到 Line。並且**完全免費**支援一般**問答、圖片生成、圖片推理、線上圖片搜索、文字生影片、圖片生影片**...等功能。
+將 AI Bot 整合到 Line。並且**完全免費**支援一般**問答、連網、圖片生成、圖片推理、線上圖片搜索、文字生影片、圖片生影片**...等功能。
 
 
 ## ✨ 功能
@@ -10,6 +10,10 @@
 * **自然語言對話**
 
     <img src="img/2023-10-25-10-03-47.png" width="15%" />
+
+* **在線連網查詢**（即時新聞、股價、時事...）
+
+    <img src="static/images/2026-04-10-16-58-46.png" width="15%" />
 
 * **圖片生成**
 
@@ -33,10 +37,6 @@
 
     <video src="https://github.com/user-attachments/assets/6da09107-1d28-43af-ae75-3401a56eabc1" controls width="50"></video>
     
-* 每週 **星座資訊**（即時）
-
-    <img src="img/2023-11-02-10-00-32.png" width="15%"/>
-
 * **YouTube 音樂** 頻道的定時推播
 
     <img src="img/2023-11-03-14-44-41.png" width="20%" />
@@ -48,19 +48,49 @@
 > [!NOTE]
 > 如果你有任何功能請求，請隨時提交 PR 或 ISSUE。
 
+## 🏗️ 系統架構
+
+```mermaid
+flowchart TD
+    User([👤 LINE 用戶]) -->|傳送訊息| LB[LINE Bot Webhook]
+    LB --> Agent{🤖 Agent<br/>意圖判斷}
+
+    Agent -->|一般對話| CC[💬 Chat Completion<br/>ZhipuAI GLM-4-Flash]
+    Agent -->|連網查詢| WS[🌐 Web Search<br/>DuckDuckGo]
+    Agent -->|生成圖片| IG[🎨 Image Generate<br/>ZhipuAI CogView]
+    Agent -->|搜尋圖片| IS[🔍 Image Crawler<br/>iCrawler / SerpAPI]
+    Agent -->|圖片推理| VLM[👁️ Image Inference<br/>ZhipuAI VLM]
+    Agent -->|文字生影片| TV[🎬 Text→Video<br/>ZhipuAI CogVideoX]
+    Agent -->|圖片生影片| IV[📹 Image→Video<br/>ZhipuAI CogVideoX]
+
+    WS -->|搜尋結果| LLM_SUM[🧠 LLM 摘要回答]
+    LLM_SUM --> Reply
+    CC --> Reply([📤 回覆用戶])
+    IG --> Reply
+    IS --> Reply
+    VLM --> Reply
+    TV --> Reply
+    IV --> Reply
+
+    style Agent fill:#ff9800,stroke:#e65100,color:#fff
+    style WS fill:#2196f3,stroke:#0d47a1,color:#fff
+    style CC fill:#4caf50,stroke:#1b5e20,color:#fff
+```
+
+
 ## 🔨 工具
 
-* `Python FastAPI`：創建 ChatGPT 回應 API
-* `gpt4free`：**免費使用 OpenAI API**
-* `zhipuai`：**免費使用 GPT API**
-* `Line messaging API channel`：連接 ChatGPT API
+* `Python FastAPI`：創建 AI 回應 API
+* `zhipuai`：**免費使用 ZhipuAI API**（GLM-4-Flash）
+* `duckduckgo-search`：**免費連網搜尋**，無需 API Key
+* `Line messaging API channel`：連接 AI API
 * `GitHub`：代碼存儲庫
 * `replit/render/ngrok`：**免費部署你自己的 FastAPI**
 * `CronJob`：免費發送定時請求，實現定時推播消息
 
-## 🧠 免費 GPT API
+## 🧠 免費 AI API
 
-本專案使用 **Zhipu AI** 開放平台作為免費 GPT API。訪問 [官方網站](https://open.bigmodel.cn/dev/howuse/glm-4) 註冊帳戶，無需信用卡或費用。在 [個人中心](https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys) 添加 API 金鑰，如下所示。將此 API 金鑰設置在環境變量 `GPT_API_KEY` 中。
+本專案使用 **Zhipu AI（智譜AI）** 開放平台作為免費 AI API。訪問 [官方網站](https://open.bigmodel.cn/dev/howuse/glm-4) 註冊帳戶，無需信用卡或費用。在 [個人中心](https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys) 添加 API 金鑰，如下所示。將此 API 金鑰設置在環境變量 `GPT_API_KEY` 中。
     ![](static/images/2025-01-02-10-18-10.png)
 
 ## 🎈 安裝步驟
@@ -80,7 +110,7 @@
 
 1. Fork GitHub 專案：
     * 註冊/登錄 [GitHub](https://github.com/)
-    * 前往 [ChatGPT-Line-Bot](https://github.com/Lin-jun-xiang/ChatGPT-Line-Bot)
+    * 前往 [AI-Line-Bot](https://github.com/Lin-jun-xiang/ChatGPT-Line-Bot)
     * 點擊 `Star` 支持開發者
     * 點擊 `Fork` 將所有代碼複製到你的存儲庫
 
@@ -173,12 +203,20 @@
 </details>
 
 <details>
-<summary><b>星座運勢查詢</b></summary>
+<summary><b>🌐 在線連網查詢（Web Search）</b></summary>
 
-當你的消息包含星座資訊請求時，網絡爬蟲將抓取每週星座：
+當 Agent 判斷用戶問題需要即時網路資料時（新聞、股價、天氣、時事等），會自動觸發連網搜尋。
 
-* 個人聊天：`給我天蠍座星座`, `我想知道天蠍座星座`, ...
-* 群組聊天：`@chat 給我天蠍座星座`, `@chat 我想知道天蠍座星座`, ...
+**技術細節：**
+- 使用 `duckduckgo-search` 套件，**完全免費、無需 API Key**
+- 支援三層自動 Fallback：DDG HTML → DDG Lite → DDG Default (Bing)
+- 搜尋結果會交給 LLM 進行摘要整理後回覆用戶
+- 為低記憶體環境（≤500 MB RAM）優化設計
+
+**使用範例：**
+* 個人聊天：`今天台灣有什麼新聞？`, `台積電股價多少？`, `搜尋 Python 最新版本`
+* 群組聊天：`@chat 最近有什麼地震消息？`, `@chat 2024世界盃結果`
+
 </details>
 
 <details>
@@ -231,7 +269,7 @@
 
     （數據集是使用 `YouTube Data v3 API` 抓取喜愛視頻生成的。本指南不涉及 YouTube API 的使用。）
 
-  * 使用 `./ChatGPT_linebot/modules/youtube_recommend.py` 隨機選擇 3 首歌曲，由 GPT 格式化。
+  * 使用 `./ChatGPT_linebot/modules/youtube_recommend.py` 隨機選擇 3 首歌曲，由 LLM 格式化。
   * 在 `./ChatGPT_linebot/urls.py` 中添加 `/recommend` 路由：
 
     ```python
@@ -262,7 +300,7 @@
   * 使用 [cron-job.org](https://cron-job.org/en/) 每天早上 8:00 定時推送：
     1. 註冊/登錄 [cron-job.org](https://cron-job.org/en/)
     2. 點擊右上角的 `CREATE CRONJOB`
-    3. 標題：`ChatGPT-Line-Bot`，URL：例如，`https://ChatGPT-Line-Bot.jimmylin.repl.co/`
+    3. 標題：`AI-Line-Bot`，URL：例如，`https://AI-Line-Bot.jimmylin.repl.co/`
     4. 設置為每 `5 分鐘` 运行
     5. 點擊 `CREATE`
 </details>
@@ -280,6 +318,6 @@
 
 1. [Line_Bot_Tutorial](https://github.com/FawenYo/LINE_Bot_Tutorial)
 
-2. [ChatGPT-Line-Bot](https://github.com/TheExplainthis/ChatGPT-Line-Bot)
+2. [ChatGPT-Line-Bot (Original Fork)](https://github.com/TheExplainthis/ChatGPT-Line-Bot)
 
 <a href="#top">返回頂部</a>

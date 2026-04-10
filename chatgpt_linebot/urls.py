@@ -11,7 +11,6 @@ from linebot.models import *
 from chatgpt_linebot.memory import Memory
 from chatgpt_linebot.modules import (
     CWArticleScraper,
-    Horoscope,
     ImageCrawler,
     RapidAPIs,
     chat_completion,
@@ -25,8 +24,7 @@ sys.path.append(".")
 import config
 
 line_app = APIRouter()
-memory = Memory(5, system_prompt)
-horoscope = Horoscope()
+memory = Memory(20, system_prompt)
 rapidapis = RapidAPIs(config.RAPID)
 cws_scraper = CWArticleScraper()
 
