@@ -10,7 +10,7 @@ api_key = os.environ.get('GPT_API_KEY')
 
 def chat_completion(
     id: int = 0,
-    memory: Memory = Memory(5),
+    memory: Memory = Memory(20),
     zhipuai_type: str = 'text',
 ) -> str:
     """Use ZhipuAI API for chat completion"""
