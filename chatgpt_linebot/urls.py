@@ -14,6 +14,7 @@ from chatgpt_linebot.modules import (
     ImageCrawler,
     RapidAPIs,
     chat_completion,
+    deep_web_search,
     recommend_videos,
     web_search,
 )
@@ -224,8 +225,8 @@ def handle_message(event) -> None:
             send_image_reply(reply_token, response)
 
         elif tool in ['web_search']:
-            # 1) 先用 DuckDuckGo 搜尋取得原始結果
-            search_results = web_search(input_query)
+            # 1) 先用 DuckDuckGo 搜尋 + 抓取網頁完整內容
+            search_results = deep_web_search(input_query, max_results=3, max_chars_per_page=2000)
             # 2) 將搜尋結果交給 LLM 做摘要回答
             summarize_prompt = (
                 f"用戶問題：{user_message}\n\n"

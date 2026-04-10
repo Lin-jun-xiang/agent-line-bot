@@ -14,7 +14,22 @@ Search priority:
 3. DDG default/Bing  (fallback, may fail on cloud)
 """
 
+import random
+import re
+
+import requests
+from bs4 import BeautifulSoup
 from duckduckgo_search import DDGS
+
+# Rotate user-agent to reduce blocking
+_USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+]
 
 
 def _format_results(results: list[dict]) -> str:
@@ -88,5 +103,104 @@ def web_search(query: str, max_results: int = 5) -> str:
             if results:
                 print(f"[web_search] Used backend: {name}")
                 return _format_results(results)
+
+    return "找不到相關搜尋結果，所有搜尋引擎皆無法取得資料。"
+
+
+# --------------- Page Content Fetching ---------------
+def _fetch_page_content(url: str, max_chars: int = 3000) -> str:
+    """Fetch and extract main text content from a URL (free, no API key)."""
+    try:
+        resp = requests.get(
+            url,
+            headers={"User-Agent": random.choice(_USER_AGENTS)},
+            timeout=10,
+            allow_redirects=True,
+        )
+        resp.encoding = resp.apparent_encoding or "utf-8"
+        if resp.status_code != 200:
+            return f"[HTTP {resp.status_code}]"
+
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # Remove noise elements
+        for tag in soup.select(
+            "script, style, nav, footer, header, aside, iframe, noscript, form"
+        ):
+            tag.decompose()
+
+        # Try common article containers first, fall back to body
+        article = (
+            soup.select_one("article")
+            or soup.select_one("div.article-content")
+            or soup.select_one("div.entry-content")
+            or soup.select_one("main")
+            or soup.body
+        )
+        if not article:
+            return "[無法解析網頁內容]"
+
+        text = article.get_text(separator="\n", strip=True)
+        # Collapse multiple blank lines
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        return text[:max_chars]
+
+    except Exception as e:
+        return f"[抓取失敗: {e}]"
+
+
+def _format_deep_results(
+    results: list[dict], max_chars_per_page: int = 2000
+) -> str:
+    """Format search results with full page content scraped from each URL."""
+    if not results:
+        return ""
+    parts = []
+    for i, r in enumerate(results, 1):
+        title = r.get("title", "")
+        href = r.get("href", "")
+
+        print(f"[deep_search] [{i}/{len(results)}] 正在抓取: {href}")
+        content = _fetch_page_content(href, max_chars=max_chars_per_page)
+
+        parts.append(
+            f"{'=' * 50}\n"
+            f"【{i}】{title}\n"
+            f"{href}\n"
+            f"{'─' * 40}\n"
+            f"{content}\n"
+        )
+    return "\n".join(parts)
+
+
+def deep_web_search(
+    query: str,
+    max_results: int = 3,
+    max_chars_per_page: int = 2000,
+) -> str:
+    """Search DDG then fetch full page content from top results. 100% free.
+
+    Same backend fallback as web_search (HTML → Lite → Default),
+    but additionally scrapes the actual web pages to get detailed content
+    instead of just short snippets.
+
+    Args:
+        query: The search query string.
+        max_results: Maximum number of pages to fetch (keep small to save time).
+        max_chars_per_page: Max characters to extract per page.
+
+    Returns:
+        A formatted string with full page content for each search result.
+    """
+    with DDGS() as ddgs:
+        for name, search_fn in [
+            ("DDG-HTML", _search_ddg_html),
+            ("DDG-Lite", _search_ddg_lite),
+            ("DDG-Default", _search_ddg_default),
+        ]:
+            results = search_fn(ddgs, query, max_results)
+            if results:
+                print(f"[deep_web_search] Used backend: {name}")
+                return _format_deep_results(results, max_chars_per_page)
 
     return "找不到相關搜尋結果，所有搜尋引擎皆無法取得資料。"
