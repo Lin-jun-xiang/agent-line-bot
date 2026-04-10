@@ -16,6 +16,7 @@ from chatgpt_linebot.modules import (
     RapidAPIs,
     chat_completion,
     recommend_videos,
+    web_search,
 )
 from chatgpt_linebot.prompts import agent_template, system_prompt
 
@@ -223,6 +224,20 @@ def handle_message(event) -> None:
         elif tool in ['search_image_url']:
             response = eval(f"{tool}('{input_query}')")
             send_image_reply(reply_token, response)
+
+        elif tool in ['web_search']:
+            # 1) 先用 DuckDuckGo 搜尋取得原始結果
+            search_results = web_search(input_query)
+            # 2) 將搜尋結果交給 LLM 做摘要回答
+            summarize_prompt = (
+                f"用戶問題：{user_message}\n\n"
+                f"以下是從網路搜尋到的資料：\n{search_results}\n\n"
+                "請根據以上搜尋結果，用繁體中文、簡潔且有條理的方式回答用戶的問題。"
+                "如果搜尋結果不足以回答，請誠實告知。"
+            )
+            memory.append(source_id, 'user', summarize_prompt)
+            response = chat_completion(source_id, memory, config.GPT_METHOD)
+            send_text_reply(reply_token, response)
 
         else:
             response = eval(f"{tool}('{input_query}')")

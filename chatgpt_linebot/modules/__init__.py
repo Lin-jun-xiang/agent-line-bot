@@ -4,3 +4,4 @@ from chatgpt_linebot.modules.horoscope import Horoscope
 from chatgpt_linebot.modules.image_crawler import ImageCrawler
 from chatgpt_linebot.modules.image_generate import RapidAPIs
 from chatgpt_linebot.modules.youtube_recommend import recommend_videos
+from chatgpt_linebot.modules.web_search import web_search
