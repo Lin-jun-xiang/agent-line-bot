@@ -201,14 +201,14 @@ finance rates EUR
 ### Convert
 
 ```bash
-finance convert 100 USD UZS
+finance convert 100 USD TWD
 finance convert 50 EUR USD
 ```
 
 ### Auto-Conversion in Expenses
 
 ```bash
-# These auto-convert to your default currency (UZS)
+# These auto-convert to your default currency (TWD)
 finance add $50 "Amazon purchase"
 finance add €30 "App subscription"
 finance add 100 USD "Online course"
@@ -251,14 +251,14 @@ finance digest      # Weekly digest
 ━━━━━━━━━━━━━━━━━━━━━
 
 📈 Spending Velocity
-   Daily avg: 85,000 UZS
-   This month so far: 1,200,000 UZS
-   Projected month total: 2,550,000 UZS
+   Daily avg: 85,000 TWD
+   This month so far: 1,200,000 TWD
+   Projected month total: 2,550,000 TWD
 
 📊 This Week vs Last Week
    📈 Spending UP 23%
-   This week: 595,000 UZS
-   Last week: 484,000 UZS
+   This week: 595,000 TWD
+   Last week: 484,000 TWD
 
 🏷️ Notable Category Changes
    🍔 food: ↑ 45%
@@ -268,7 +268,7 @@ finance digest      # Weekly digest
    • Unusually large expense: 350,000 on electronics
 
 🎯 Savings Goals
-   Need to save: 50,000 UZS/day
+   Need to save: 50,000 TWD/day
    Next deadline: Laptop in 45 days
 ```
 

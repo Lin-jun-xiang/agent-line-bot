@@ -47,14 +47,14 @@ class Portfolio:
     def _init_files(self):
         if not self.portfolio_file.exists():
             self._save_portfolio({
-                "currency": "UZS",
+                "currency": "TWD",
                 "assets": [],
                 "updated_at": datetime.now().isoformat()
             })
         
         if not self.income_file.exists():
             self._save_income({
-                "currency": "UZS",
+                "currency": "TWD",
                 "income": [],
                 "created_at": datetime.now().isoformat()
             })
@@ -64,7 +64,7 @@ class Portfolio:
             with open(self.portfolio_file) as f:
                 return json.load(f)
         except:
-            return {"currency": "UZS", "assets": []}
+            return {"currency": "TWD", "assets": []}
     
     def _save_portfolio(self, data: Dict[str, Any]):
         data["updated_at"] = datetime.now().isoformat()
@@ -76,7 +76,7 @@ class Portfolio:
             with open(self.income_file) as f:
                 return json.load(f)
         except:
-            return {"currency": "UZS", "income": []}
+            return {"currency": "TWD", "income": []}
     
     def _save_income(self, data: Dict[str, Any]):
         with open(self.income_file, 'w') as f:
@@ -134,7 +134,7 @@ class Portfolio:
         """Generate portfolio report."""
         assets = self.get_assets()
         data = self._load_portfolio()
-        currency = data.get("currency", "UZS")
+        currency = data.get("currency", "TWD")
         
         if not assets:
             return "📊 Portfolio\n━━━━━━━━━━━━━━━━━━━━━\n\n📭 No assets tracked yet.\n\nAdd one: finance asset add \"Bank Account\" 5000000 cash"
@@ -201,7 +201,7 @@ class Portfolio:
         """Generate income report."""
         income = self.get_income(days=days)
         data = self._load_income()
-        currency = data.get("currency", "UZS")
+        currency = data.get("currency", "TWD")
         
         if not income:
             return f"📈 Income (last {days} days)\n━━━━━━━━━━━━━━━━━━━━━\n\n📭 No income recorded.\n\nAdd: finance income 5000000 \"salary\""

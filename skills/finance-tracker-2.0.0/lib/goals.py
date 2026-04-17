@@ -219,7 +219,7 @@ class GoalsManager:
             total_target = sum(g["target_amount"] for g in active)
             total_saved = sum(g["current_amount"] for g in active)
             
-            lines.append(f"💰 Total Saved: {total_saved:,} / {total_target:,} UZS")
+            lines.append(f"💰 Total Saved: {total_saved:,} / {total_target:,} TWD")
             lines.append("")
             
             for goal in active:
@@ -234,7 +234,7 @@ class GoalsManager:
                 
                 lines.append(f"{priority_emoji} **{goal['name']}**")
                 lines.append(f"   [{bar}] {pct:.0f}%")
-                lines.append(f"   {progress['current']:,} / {progress['target']:,} UZS")
+                lines.append(f"   {progress['current']:,} / {progress['target']:,} TWD")
                 
                 if progress.get("overdue"):
                     lines.append(f"   ⚠️ Overdue by {progress['days_overdue']} days!")
@@ -247,7 +247,7 @@ class GoalsManager:
         if completed:
             lines.append("✅ Completed:")
             for goal in completed[-3:]:  # Show last 3
-                lines.append(f"   🏆 {goal['name']} ({goal['target_amount']:,} UZS)")
+                lines.append(f"   🏆 {goal['name']} ({goal['target_amount']:,} TWD)")
         
         return "\n".join(lines)
     

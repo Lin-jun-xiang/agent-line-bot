@@ -246,7 +246,7 @@ class RecurringManager:
         lines = [
             "🔄 Recurring Expenses",
             "━━━━━━━━━━━━━━━━━━━━━",
-            f"💰 Monthly Total: {monthly_total:,} UZS",
+            f"💰 Monthly Total: {monthly_total:,} TWD",
             ""
         ]
         

@@ -252,7 +252,7 @@ def cmd_rates(args):
 def cmd_convert(args):
     """Convert between currencies."""
     if len(args) < 3:
-        print("❌ Usage: finance convert 100 USD UZS")
+        print("❌ Usage: finance convert 100 USD TWD")
         return 1
     
     try:
@@ -307,7 +307,7 @@ def cmd_income(args):
     income = portfolio.add_income(amount, description, income_type)
     
     emoji = Portfolio.INCOME_TYPES.get(income_type, {}).get("emoji", "💰")
-    print(f"✅ Income logged: {emoji} {amount:,} UZS — {description}")
+    print(f"✅ Income logged: {emoji} {amount:,} TWD — {description}")
     return 0
 
 
@@ -333,7 +333,7 @@ def cmd_asset(args):
         asset = portfolio.add_asset(name, value, asset_type)
         
         emoji = Portfolio.ASSET_TYPES.get(asset_type, {}).get("emoji", "📦")
-        print(f"✅ Asset added: {emoji} {name} = {value:,} UZS")
+        print(f"✅ Asset added: {emoji} {name} = {value:,} TWD")
         return 0
     
     elif action == "remove" and len(args) >= 2:
@@ -488,7 +488,7 @@ def cmd_goal(args):
         
         goal = goals.add_goal(name, target, deadline, current)
         print(f"🎯 Goal added: {name}")
-        print(f"   Target: {target:,} UZS")
+        print(f"   Target: {target:,} TWD")
         if deadline:
             print(f"   Deadline: {deadline}")
         return 0
@@ -620,7 +620,7 @@ GOALS:
 CURRENCY:
   finance rates                     Show exchange rates
   finance rates USD                 Show specific rate
-  finance convert 100 USD UZS       Convert currencies
+  finance convert 100 USD TWD       Convert currencies
   finance currency [code]           Get/set default currency
 
 INCOME & ASSETS:

@@ -38,7 +38,7 @@ class FinanceStorage:
         if not self.json_file.exists():
             self._save_json({
                 "version": self.VERSION,
-                "currency": "UZS",
+                "currency": "TWD",
                 "created_at": datetime.now().isoformat(),
                 "transactions": []
             })
@@ -50,7 +50,7 @@ class FinanceStorage:
         """Create initial markdown file."""
         content = f"""# 💰 Finance Log
 
-**Currency:** UZS  
+**Currency:** TWD  
 **Started:** {datetime.now().strftime("%Y-%m-%d")}
 
 ---
@@ -73,7 +73,7 @@ class FinanceStorage:
             with open(self.json_file) as f:
                 return json.load(f)
         except (json.JSONDecodeError, FileNotFoundError):
-            return {"version": self.VERSION, "currency": "UZS", "transactions": []}
+            return {"version": self.VERSION, "currency": "TWD", "transactions": []}
     
     def _save_json(self, data: Dict[str, Any]):
         """Save data to JSON file."""
@@ -174,7 +174,7 @@ class FinanceStorage:
     def get_currency(self) -> str:
         """Get the configured currency."""
         data = self._load_json()
-        return data.get("currency", "UZS")
+        return data.get("currency", "TWD")
     
     def set_currency(self, currency: str):
         """Set the currency."""

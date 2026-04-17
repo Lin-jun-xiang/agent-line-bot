@@ -92,7 +92,7 @@ def parse_expense(text: str) -> Tuple[Optional[int], str]:
     return amount, description
 
 
-def format_confirmation(amount: int, category: str, description: str, currency: str = "UZS") -> str:
+def format_confirmation(amount: int, category: str, description: str, currency: str = "TWD") -> str:
     """Format a confirmation message for an added expense."""
     try:
         from .categories import get_emoji
