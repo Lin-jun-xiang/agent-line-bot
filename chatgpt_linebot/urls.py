@@ -1,7 +1,6 @@
 import base64
-import json
-import re
 import sys
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 from linebot import LineBotApi, WebhookHandler
@@ -11,14 +10,13 @@ from linebot.models import *
 from chatgpt_linebot.memory import Memory
 from chatgpt_linebot.modules import (
     CWArticleScraper,
-    ImageCrawler,
     RapidAPIs,
     chat_completion,
-    deep_web_search,
     recommend_videos,
-    web_search,
+    run_agent,
+    AgentResult,
 )
-from chatgpt_linebot.prompts import agent_template, system_prompt
+from chatgpt_linebot.prompts import system_prompt
 
 sys.path.append(".")
 
@@ -57,45 +55,19 @@ async def callback(request: Request) -> str:
     return "OK"
 
 
-def extract_legal_json(text: str) -> dict:
-    """Convert the LLM Resonse to JSON."""
-    try:
-        return json.loads(text)
-    except Exception:
-        pass
-
-    match = re.search(r'`json\n([\s\S]+?)\n`', text)
-    json_str = match.group(1)
-    json_data = json.loads(json_str)
-    return json_data
-
-
-def agent(query: str) -> tuple[str]:
-    """Auto use correct tool by user query."""
-    prompt = agent_template + query
-    message = [{'role': 'user', 'content': prompt}]
-
-    try:
-        response = chat_completion(memory=message)
-
-        result = extract_legal_json(response)
-        tool = result.get('tool', 'chat_completion')
-        input_query = result.get('input', query)
-
-        print(f"""
-        Agent
-        =========================================
-        Query: {query}
-        Tool: {tool}
-        Input: {input_query}
-        Raw Response: {response}
-        """)
-
-        return tool, input_query
-        
-    except Exception as e:
-        print(f"JSON Parser Error for: {response}")
-        return 'chat_completion', query
+def _build_env_override(source_id: str) -> dict:
+    """Build per-user environment overrides for skill data isolation."""
+    from chatgpt_linebot.modules.skill_loader import discover_skills
+    user_data_root = Path.home() / ".chatbot-skills"
+    env_override = {}
+    for skill in discover_skills():
+        env_key = skill.get("env_key")
+        skill_name = skill.get("name", "default")
+        if env_key:
+            user_dir = user_data_root / skill_name / str(source_id)
+            user_dir.mkdir(parents=True, exist_ok=True)
+            env_override[env_key] = str(user_dir)
+    return env_override
 
 
 def send_video_reply(reply_token, video_url: str, preview_image_url: str) -> None:
@@ -105,17 +77,6 @@ def send_video_reply(reply_token, video_url: str, preview_image_url: str) -> Non
         preview_image_url=preview_image_url
     )
     line_bot_api.reply_message(reply_token, messages=video_message)
-
-
-def search_image_url(query: str) -> str:
-    """Fetches image URL from different search sources."""
-    img_crawler = ImageCrawler(nums=5)
-    img_url = img_crawler.get_url(query)
-    if not img_url:
-        img_serp = ImageCrawler(engine='serpapi', nums=5, api_key=config.SERPAPI_API_KEY)
-        img_url = img_serp.get_url(query)
-        print('Used Serpapi search image instead of icrawler.')
-    return img_url
 
 
 def send_image_reply(reply_token, img_url: str) -> None:
@@ -136,15 +97,7 @@ def send_text_reply(reply_token, text: str) -> None:
 
 @handler.add(MessageEvent, message=(TextMessage))
 def handle_message(event) -> None:
-    """Event - User sent message
-
-    Args:
-        event (LINE Event Object)
-
-    Refs:
-        https://developers.line.biz/en/reference/messaging-api/#message-event
-        https://www.21cs.tw/Nurse/showLiangArticle.xhtml?liangArticleId=503
-    """
+    """Event - User sent message"""
     global memory
 
     if not isinstance(event.message, TextMessage):
@@ -158,94 +111,72 @@ def handle_message(event) -> None:
     print('ID:', source_id, 'Memory:', memory.get(source_id))
 
     if user_message.startswith('@prompt'):
-        # 讓使用者自訂 prompt
         custom_prompt = user_message.replace('@prompt', '').strip()
         memory.set_system_prompt(source_id, f"System Instruction:\n{custom_prompt}")
         print(f'Reset System Prompt for user {source_id}.')
         send_text_reply(reply_token, f"Successfully reset system prompt.")
         return
     elif user_message.startswith('@init'):
-        # 初始化 prompt
         memory.remove(source_id)
         print(f'Initialized Bot for user {source_id}.')
         send_text_reply(reply_token, f"Successfully initialized which will clear conversation history.")
         return
 
     if source_type == 'user':
-        # 非群組聊天
         user_name = line_bot_api.get_profile(source_id).display_name
         print(f'{user_name}: {user_message}')
-
     else:
-        # 群組聊天
         if not user_message.startswith('@chat'):
-            # 在群組聊天中若沒有透過 @chat 輸入訊息則忽略
             return
         else:
             user_message = user_message.replace('@chat', '')
 
-    response = ""
     try:
-        tool, input_query = agent(user_message)
+        # Build per-user env overrides for skill data isolation
+        env_override = _build_env_override(source_id)
 
-        if tool in ['chat_completion']:
-            memory.append(source_id, 'user', f"{user_message}")
-        elif tool in ['image_inference']:
-            memory.append(source_id, 'user', [
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{memory.image_storage[source_id]}"}},
-                {"type": "text", "text": f"{user_message}"}
-            ])
+        # Check if user has an uploaded image
+        image_b64 = memory.image_storage.get(source_id)
+
+        # Run the agent loop
+        result = run_agent(
+            user_message=user_message,
+            source_id=source_id,
+            memory=memory,
+            env_override=env_override,
+            image_base64=image_b64 if user_message_needs_image(user_message) else None,
+        )
+
+        print(f"""
+        Agent Result
+        =========================================
+        Text: {result.text[:200] if result.text else '(none)'}
+        Image: {result.image_url}
+        Video: {result.video_url}
+        Tool calls: {result.tool_calls_log}
+        """)
+
+        # Send appropriate reply based on what the agent produced
+        if result.video_url:
+            send_video_reply(reply_token, result.video_url, result.video_cover_url or result.video_url)
+        elif result.image_url:
+            send_image_reply(reply_token, result.image_url)
+            if result.text:
+                # Image already sent via reply, push text as follow-up
+                line_bot_api.push_message(source_id, TextSendMessage(text=result.text))
         else:
-            memory.append(source_id, 'user', f"{user_message}")
-
-        if tool in ['chat_completion']:
-            response = chat_completion(source_id, memory)
-            send_text_reply(reply_token, response)
-
-        elif tool in ['image_inference']:
-            response = chat_completion(source_id, memory, zhipuai_type='image_inference')
-            send_text_reply(reply_token, response)
-
-        elif tool in ['generate_image']:
-            response = chat_completion(source_id, input_query, zhipuai_type='image_gen')
-            send_image_reply(reply_token, response)
-
-        elif tool in ['text_gen_video']:
-            response = chat_completion(source_id, input_query, zhipuai_type='text_gen_video')
-            send_video_reply(reply_token, response.video_result[0].url, response.video_result[0].cover_image_url)
-            response = str(response)
-
-        elif tool in ['img_gen_video']:
-            response = chat_completion(source_id, memory, zhipuai_type='img_gen_video')
-            send_video_reply(reply_token, response.video_result[0].url, response.video_result[0].cover_image_url)
-            response = str(response)
-
-        elif tool in ['search_image_url']:
-            response = eval(f"{tool}('{input_query}')")
-            send_image_reply(reply_token, response)
-
-        elif tool in ['web_search']:
-            # 1) 先用 DuckDuckGo 搜尋 + 抓取網頁完整內容
-            search_results = deep_web_search(input_query, max_results=3, max_chars_per_page=2000)
-            # 2) 將搜尋結果交給 LLM 做摘要回答
-            summarize_prompt = (
-                f"用戶問題：{user_message}\n\n"
-                f"以下是從網路搜尋到的資料：\n{search_results}\n\n"
-                "請根據以上搜尋結果，用繁體中文、簡潔且有條理的方式回答用戶的問題。"
-                "如果搜尋結果不足以回答，請誠實告知。"
-            )
-            memory.append(source_id, 'user', summarize_prompt)
-            response = chat_completion(source_id, memory)
-            send_text_reply(reply_token, response)
-
-        else:
-            response = eval(f"{tool}('{input_query}')")
-            send_text_reply(reply_token, response)
-
-        memory.append(source_id, 'system', response)
+            send_text_reply(reply_token, result.text)
 
     except Exception as e:
-        send_text_reply(reply_token, f"{e}: {response}")
+        import traceback
+        traceback.print_exc()
+        send_text_reply(reply_token, f"發生錯誤：{e}")
+
+
+def user_message_needs_image(msg: str) -> bool:
+    """Heuristic: does the user message likely refer to an uploaded image?"""
+    keywords = ['這張', '這個圖', '圖片', '照片', '分析', '看看', '是什麼', '描述', 'image', 'photo', '截圖']
+    return any(k in msg for k in keywords)
 
 
 @handler.add(MessageEvent, message=(ImageMessage))

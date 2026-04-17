@@ -4,3 +4,5 @@ from chatgpt_linebot.modules.image_crawler import ImageCrawler
 from chatgpt_linebot.modules.image_generate import RapidAPIs
 from chatgpt_linebot.modules.youtube_recommend import recommend_videos
 from chatgpt_linebot.modules.web_search import deep_web_search, web_search
+from chatgpt_linebot.modules.execute_command import execute_command
+from chatgpt_linebot.modules.agent import run_agent, AgentResult
