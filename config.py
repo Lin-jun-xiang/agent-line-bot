@@ -15,5 +15,8 @@ SERPAPI_API_KEY = os.environ.get('SERPAPI_API_KEY')
 # RAPID API
 RAPID = os.environ.get('RAPID')
 
+# Tavily (optional, for web search)
+TAVILY_API_KEY = os.environ.get('TAVILY_API_KEY')
+
 # ZHIPUAI API
 GPT_API_KEY = os.environ.get('GPT_API_KEY')

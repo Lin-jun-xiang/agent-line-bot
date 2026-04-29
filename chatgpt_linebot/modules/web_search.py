@@ -21,6 +21,8 @@ import requests
 from bs4 import BeautifulSoup
 from duckduckgo_search import DDGS
 
+from config import TAVILY_API_KEY
+
 # Rotate user-agent to reduce blocking
 _USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -30,6 +32,27 @@ _USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
 ]
+
+
+def _tavily_search(query: str, max_results: int) -> list[dict]:
+    """Search using Tavily API (cloud-friendly, requires TAVILY_API_KEY)."""
+    try:
+        from tavily import TavilyClient
+
+        client = TavilyClient(api_key=TAVILY_API_KEY)
+        response = client.search(query=query, max_results=max_results)
+        results = []
+        for r in response.get("results", []):
+            results.append({
+                "title": r.get("title", ""),
+                "body": r.get("content", ""),
+                "href": r.get("url", ""),
+            })
+        print(f"[Tavily] results count: {len(results)}")
+        return results
+    except Exception as e:
+        print(f"[Tavily] error: {e}")
+        return []
 
 
 def _format_results(results: list[dict]) -> str:
@@ -93,6 +116,13 @@ def web_search(query: str, max_results: int = 5) -> str:
     Returns:
         A formatted string containing search results (title + snippet + url).
     """
+    # Try Tavily first when API key is available
+    if TAVILY_API_KEY:
+        results = _tavily_search(query, max_results)
+        if results:
+            print("[web_search] Used backend: Tavily")
+            return _format_results(results)
+
     with DDGS() as ddgs:
         for name, search_fn in [
             ("DDG-HTML", _search_ddg_html),
@@ -192,6 +222,13 @@ def deep_web_search(
     Returns:
         A formatted string with full page content for each search result.
     """
+    # Try Tavily first when API key is available
+    if TAVILY_API_KEY:
+        results = _tavily_search(query, max_results)
+        if results:
+            print("[deep_web_search] Used backend: Tavily")
+            return _format_deep_results(results, max_chars_per_page)
+
     with DDGS() as ddgs:
         for name, search_fn in [
             ("DDG-HTML", _search_ddg_html),
