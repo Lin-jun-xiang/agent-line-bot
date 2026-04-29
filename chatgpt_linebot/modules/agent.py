@@ -222,6 +222,9 @@ def _dispatch_tool(
             if not url:
                 crawler2 = ImageCrawler(engine="serpapi", nums=5, api_key=config.SERPAPI_API_KEY)
                 url = crawler2.get_url(query)
+            if not url and getattr(config, 'TAVILY_API_KEY', None):
+                crawler3 = ImageCrawler(engine="tavily", nums=5, api_key=config.TAVILY_API_KEY)
+                url = crawler3.get_url(query)
             if url:
                 result.image_url = url
                 return f"✅ Image found: {url}"

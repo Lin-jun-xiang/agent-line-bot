@@ -104,12 +104,41 @@ class ImageCrawler:
 
         return img_urls[:self.nums]
 
+    def _tavily_extract(self, search_query: str) -> list[str]:
+        """Use Tavily Extract to fetch image URLs from a Google Images search page."""
+        from tavily import TavilyClient
+        import urllib.parse
+
+        encoded_query = urllib.parse.quote_plus(search_query)
+        google_images_url = f"https://www.google.com/search?q={encoded_query}&tbm=isch"
+
+        client = TavilyClient(api_key=self.api_key)
+        response = client.extract(
+            urls=[google_images_url],
+            include_images=True,
+        )
+
+        urls = []
+        for result in response.get("results", []):
+            for img_url in result.get("images", []):
+                urls.append(img_url)
+                if len(urls) >= self.nums:
+                    break
+            if len(urls) >= self.nums:
+                break
+
+        return urls[:self.nums]
+
     def get_url(self, search_query: str) -> str:
         try:
             if self.engine == 'icrawler':
                 urls = self._icrawler(search_query)
             elif self.engine == 'serpapi':
                 urls = self._serpapi(search_query)
+            elif self.engine == 'tavily':
+                urls = self._tavily_extract(search_query)
+            else:
+                urls = []
 
             for url in urls:
                 if self._is_img_url(url):
