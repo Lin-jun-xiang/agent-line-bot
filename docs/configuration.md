@@ -91,7 +91,7 @@ GLM_FREE_MODEL=glm-5.2
 | `web_search` | DuckDuckGo 搜尋 + 抓取內文 |
 | `fetch_url` | 讀取單一網頁 |
 | `generate_image` | 文字生成圖片（CogView） |
-| `search_image` | 網路圖片搜尋（iCrawler / SerpAPI） |
+| `search_image` | 網路圖片搜尋（Bing → Wikimedia Commons → Openverse → SerpAPI） |
 | `describe_image` | 看圖回答（視覺模型） |
 | `generate_video` | 文字或圖片生成影片（CogVideoX） |
 

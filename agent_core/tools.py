@@ -221,6 +221,9 @@ def build_tool_server(artifacts: list[dict], cwd: str | None = None):
             artifacts.append({"kind": "image", "url": url, "prompt": prompt})
             return _text(f"Image generated: {url}")
         except Exception as exc:  # noqa: BLE001
+            # Logged as well as returned: the model paraphrases tool failures
+            # into a vague apology and the real cause never reaches the operator.
+            print(f"[generate_image] {type(exc).__name__}: {exc}")
             return _text(f"generate_image failed: {exc}")
 
     @tool(
@@ -297,16 +300,18 @@ def build_tool_server(artifacts: list[dict], cwd: str | None = None):
 
             from agent_core.integrations.image_crawler import ImageCrawler
 
-            url = ImageCrawler(nums=5).get_url(query)
-            if not url and getattr(config, "SERPAPI_API_KEY", None):
-                url = ImageCrawler(
-                    engine="serpapi", nums=5, api_key=config.SERPAPI_API_KEY
-                ).get_url(query)
+            url = ImageCrawler(
+                nums=5, api_key=getattr(config, "SERPAPI_API_KEY", None)
+            ).get_url(query)
             if not url:
-                return _text("No image found.")
+                return _text(
+                    "No image found for that query. Say so plainly — do not claim "
+                    "the image tools are broken."
+                )
             artifacts.append({"kind": "image", "url": url, "prompt": query})
             return _text(f"Image found: {url}")
         except Exception as exc:  # noqa: BLE001
+            print(f"[search_image] {type(exc).__name__}: {exc}")
             return _text(f"search_image failed: {exc}")
 
     return create_sdk_mcp_server(
