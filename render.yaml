@@ -1,0 +1,64 @@
+# Render Blueprint.
+#
+# Why this file exists: this service must run with the Docker runtime (the agent
+# shells out to the `claude` CLI, which needs Node — Render's native Python
+# runtime cannot provide it). Render does not let you change an existing
+# service's runtime from the Dashboard, but it does honour a Blueprint, so
+# syncing this file converts a Python-runtime service to Docker in place.
+#
+# Usage
+#   New service:      Dashboard -> New + -> Blueprint -> pick this repo
+#   Existing service: Dashboard -> Blueprints -> New Blueprint Instance -> pick
+#                     this repo. Match `name` below to the existing service name
+#                     (agent-line-bot) so it is adopted rather than duplicated.
+#
+# Secrets use `sync: false`: Render prompts for them on creation and never stores
+# them in git.
+
+services:
+  - type: web
+    name: agent-line-bot
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    region: singapore
+    plan: free
+    branch: main
+    healthCheckPath: /agent/health
+
+    envVars:
+      # --- required -------------------------------------------------------
+      # https://open.bigmodel.cn -> API Keys
+      - key: GLM_API_KEY
+        sync: false
+      # https://developers.line.biz -> your channel
+      - key: LINE_CHANNEL_SECRET
+        sync: false
+      - key: LINE_CHANNEL_ACCESS_TOKEN
+        sync: false
+
+      # --- behaviour ------------------------------------------------------
+      - key: AGENT_TIMEZONE
+        value: Asia/Taipei
+      - key: AGENT_TOOL_PROFILE
+        value: files
+      - key: AGENT_THINKING
+        value: "false"
+
+      # Where every user's workspace, MEMORY.md and PERSONA.md live.
+      # On the free plan this is container-local, so it is wiped on every
+      # deploy. See the disk block below.
+      - key: AGENT_WORKSPACE_ROOT
+        value: /data/workspace
+
+      # --- optional -------------------------------------------------------
+      # - key: SERPAPI_API_KEY
+      #   sync: false
+
+    # Persistent storage is not available on the free plan. Without it the bot
+    # forgets everyone on each redeploy. To keep memory: move `plan` above to
+    # `starter` and uncomment this block.
+    #
+    # disk:
+    #   name: workspace
+    #   mountPath: /data
+    #   sizeGB: 1

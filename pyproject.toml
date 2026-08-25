@@ -1,29 +1,39 @@
 [tool.poetry]
 name = "chatgpt-line-bot"
-version = "0.1.0"
-description = ""
+version = "2.0.0"
+description = "AI寶寶 — a LINE assistant running on the Claude Code harness with GLM, sandboxed to ./workspace"
 authors = ["hs_junxiang <jimmy871117@gmail.com>"]
 readme = "README.md"
-# packages = [{include = "chatgpt_line_bot"}] # replit
 
 [tool.poetry.dependencies]
 python = "^3.11"
-uvicorn = "^0.23.2"
-fastapi = "^0.104.0"
+
+# Agent harness. Also needs the `claude` CLI on the host:
+#   npm i -g @anthropic-ai/claude-code
+claude-agent-sdk = "^0.2.144"
+
+# Web service
+fastapi = "^0.120.0"
+uvicorn = "^0.35.0"
 line-bot-sdk = "^3.5.0"
-requests = "^2.31.0"
-bs4 = "^0.0.1"
-icrawler = "^0.6.7"
 python-dotenv = "^1.0.0"
-nest_asyncio = "*"
-pillow = "*"
-jinja2 = "*"
+
+# Tools: web search + page reading (modules/web_search.py)
+requests = "^2.31.0"
+beautifulsoup4 = "^4.12.0"
 lxml = "^5.2.2"
-serpapi = "^0.1.5"
-google-search-results = "^2.4.2"
-cloudscraper = "^1.2.71"
-zhipuai = "*"
 duckduckgo-search = "^8.1.1"
+
+# Tools: image search (modules/image_crawler.py)
+icrawler = "^0.6.7"
+serpapi = "^0.1.5"
+
+# Tools: image / video generation (agent_core/tools.py)
+zhipuai = "*"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+httpx = "^0.28.1"
 
 [build-system]
 requires = ["poetry-core"]

@@ -1,0 +1,48 @@
+# Build context for container deploys (Render, Fly, plain Docker).
+# Keep this tight: everything listed here is uploaded on every deploy otherwise.
+
+# VCS + local tooling
+.git
+.github
+.gitignore
+.dockerignore
+
+# Local virtualenvs — the image installs its own dependencies
+.venv
+venv
+env
+ENV
+
+# Secrets. Provide these as environment variables in the host's dashboard.
+.env
+.env.*
+!.env.example
+secret.txt
+
+# Python build artefacts
+__pycache__
+**/__pycache__
+*.py[cod]
+*.egg-info
+.pytest_cache
+.mypy_cache
+.ruff_cache
+htmlcov
+.coverage
+
+# Agent sandbox — per-user workspaces are runtime state, never baked into an image
+workspace
+
+# Dev-only
+tests
+scripts
+img
+static
+*.md
+!README.md
+
+# Editors / OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db

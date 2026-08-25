@@ -1,0 +1,24 @@
+# Kept in sync with pyproject.toml. Used by the Dockerfile, which avoids
+# installing Poetry inside the image.
+
+# Agent harness (also needs the `claude` CLI — the Dockerfile installs it via npm)
+claude-agent-sdk>=0.2.144
+
+# Web service
+fastapi>=0.120.0
+uvicorn>=0.35.0
+line-bot-sdk>=3.5.0
+python-dotenv>=1.0.0
+
+# Tools: web search + page reading
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=5.2.2
+duckduckgo-search>=8.1.1
+
+# Tools: image search
+icrawler>=0.6.7
+serpapi>=0.1.5
+
+# Tools: image / video generation + image reasoning
+zhipuai
