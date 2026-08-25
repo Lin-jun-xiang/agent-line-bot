@@ -28,8 +28,10 @@ duckduckgo-search = "^8.1.1"
 icrawler = "^0.6.7"
 serpapi = "^0.1.5"
 
-# Tools: image / video generation (agent_core/tools.py)
+# Tools: image / video generation + image reasoning (agent_core/tools.py)
 zhipuai = "*"
+# Downscales photos before they go to the vision model (5MB / 6000px limit)
+pillow = "^10.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

@@ -20,6 +20,12 @@
 `describe_image` 會依序試 `GLM_VISION_MODEL` → `GLM_VISION_FALLBACKS`，直到有一個回應。
 實測 `glm-4.6v-flash` 經常 429，`glm-4v-flash` 穩定得多。
 
+視覺模型的限制是單張 **5MB / 6000×6000**，而手機照片兩項都可能超過。所以
+`describe_image` 送出前會先用 Pillow 把最長邊縮到 1568px、重新編碼成 JPEG——
+實測 4032×3024 的照片 base64 從 349KB 降到 36KB，回應也快得多。
+失敗時真正的錯誤會印在 log 的 `[describe_image]` 開頭那行（模型會把錯誤包裝成
+「我看不了這張圖片」，所以不看 log 是查不出原因的）。
+
 Claude Code 只會要求 opus / sonnet / haiku 三個別名，`settings.py` 把它們全部對應到
 `GLM_FREE_MODEL`。三個都指向免費模型是刻意的——這樣就算 harness 內部派子 agent，
 也不會偷偷跑到付費模型。

@@ -22,9 +22,45 @@ from agent_core import settings
 SERVER_NAME = "botkit"
 SHELL_TIMEOUT = 60
 
+# Longest edge sent to the vision model. Well inside its 5MB / 6000px limits
+# while keeping enough detail to answer questions about a photo.
+VISION_MAX_EDGE = 1568
+
 
 def _text(payload: str) -> dict:
     return {"content": [{"type": "text", "text": payload}]}
+
+
+def _encode_image(path) -> tuple[str | None, str | None]:
+    """Base64-encode an image, shrinking it to fit the vision API's limits.
+
+    The vision models reject anything over 5MB or 6000x6000, and photos straight
+    off a phone routinely exceed both. Downscaling to VISION_MAX_EDGE also makes
+    the request substantially faster with no practical loss of detail for
+    "what is in this picture" questions.
+
+    Returns (base64, error).
+    """
+    import base64
+    import io
+
+    try:
+        from PIL import Image
+    except ImportError:  # Pillow missing — send the original and hope it fits
+        try:
+            return base64.b64encode(path.read_bytes()).decode("utf-8"), None
+        except OSError as exc:
+            return None, str(exc)
+
+    try:
+        with Image.open(path) as img:
+            img = img.convert("RGB")
+            img.thumbnail((VISION_MAX_EDGE, VISION_MAX_EDGE))
+            buffer = io.BytesIO()
+            img.save(buffer, format="JPEG", quality=85, optimize=True)
+        return base64.b64encode(buffer.getvalue()).decode("utf-8"), None
+    except Exception as exc:  # noqa: BLE001 - unreadable/unsupported image
+        return None, f"{type(exc).__name__}: {exc}"
 
 
 async def describe_image_impl(raw: str, question: str, cwd: str | None) -> str:
@@ -34,8 +70,6 @@ async def describe_image_impl(raw: str, question: str, cwd: str | None) -> str:
     open files themselves must run the containment check directly — the
     PreToolUse hook only sees `path` as an opaque string.
     """
-    import base64
-
     from zhipuai import ZhipuAI
 
     target = _resolve_in_workspace(raw, cwd)
@@ -44,10 +78,10 @@ async def describe_image_impl(raw: str, question: str, cwd: str | None) -> str:
     if not target.is_file():
         return f"no such image: {raw}"
 
-    try:
-        encoded = base64.b64encode(target.read_bytes()).decode("utf-8")
-    except OSError as exc:
-        return f"describe_image could not read the file: {exc}"
+    encoded, encode_error = _encode_image(target)
+    if encoded is None:
+        print(f"[describe_image] cannot encode {target}: {encode_error}")
+        return f"describe_image could not read the image: {encode_error}"
 
     client = ZhipuAI(api_key=settings.GLM_API_KEY)
     messages = [
@@ -71,8 +105,12 @@ async def describe_image_impl(raw: str, question: str, cwd: str | None) -> str:
                 return text
             errors.append(f"{model}: empty response")
         except Exception as exc:  # noqa: BLE001
-            errors.append(f"{model}: {type(exc).__name__}")
-    return "describe_image failed on every vision model — " + "; ".join(errors)
+            # Logged, not just returned: the model paraphrases failures away
+            # ("抱歉我看不了這張圖片") and the real cause never reaches the operator.
+            errors.append(f"{model}: {type(exc).__name__}: {exc}")
+    detail = "; ".join(errors)
+    print(f"[describe_image] all vision models failed for {target.name}: {detail}")
+    return f"describe_image failed on every vision model — {detail}"
 
 
 def _resolve_in_workspace(raw: str, cwd: str | None):

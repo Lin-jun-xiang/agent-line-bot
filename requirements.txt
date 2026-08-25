@@ -22,3 +22,6 @@ serpapi>=0.1.5
 
 # Tools: image / video generation + image reasoning
 zhipuai
+# Downscales photos before sending them to the vision model, which rejects
+# anything over 5MB / 6000px — a phone photo exceeds both.
+pillow>=10.0.0
