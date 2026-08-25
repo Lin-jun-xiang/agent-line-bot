@@ -322,6 +322,7 @@ build failed 還是 deploy failed，**Logs** 分頁才是實際輸出。
 | `sandbox.workspace` 是 `unwritable` | 磁碟沒掛在 `/data`，或 `AGENT_WORKSPACE_ROOT` 指到唯讀路徑 |
 | log 出現 `[startup] LINE routes disabled` | LINE 兩個憑證沒設好。`/agent/*` 仍可用，但 bot 不會回話 |
 | 傳圖片後她說「我看不了這張圖片」 | 看 log 的 `[describe_image]` 那行會印出真正的錯誤。多半是圖片超過視覺模型的 5MB / 6000px 限制，或三個視覺模型同時被限流 |
+| 圖片工具回 `cannot import name 'ZhipuAI' from 'zhipuai'` | image 裡裝到 zhipuai 1.0.7。2.x 把 pyjwt 釘在 `<2.9`，agent SDK 的 `mcp` 要 `>=2.10.1`，pip 就一路退版到沒有 `ZhipuAI` 的 1.0.7。修法是 Dockerfile 用 `pip install --no-deps zhipuai==2.1.5.20250825` 單獨裝，requirements.txt 裡不要列它 |
 | LINE Verify 按下去失敗 | 服務在休眠（等 30 秒再按）、或 Webhook URL 漏了 `/callback` |
 | Bot 只回官方罐頭訊息 | LINE 的「自動回應訊息」沒關掉 |
 | Bot 完全不回，log 也沒動靜 | Webhook URL 填錯，或 **Use webhook** 沒打開 |

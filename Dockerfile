@@ -20,7 +20,11 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# zhipuai goes in separately with --no-deps: its pyjwt pin conflicts with the
+# agent SDK's, and letting pip resolve it yields the ancient 1.0.7. See the note
+# in requirements.txt.
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir --no-deps zhipuai==2.1.5.20250825
 
 COPY . .
 

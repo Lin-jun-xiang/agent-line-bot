@@ -21,7 +21,16 @@ icrawler>=0.6.7
 serpapi>=0.1.5
 
 # Tools: image / video generation + image reasoning
-zhipuai
+#
+# zhipuai is deliberately NOT listed here — the Dockerfile installs it with
+# --no-deps. Its 2.x wheels pin `pyjwt>=2.8.0,<2.9.0`, while `mcp` (pulled in by
+# claude-agent-sdk) needs `pyjwt>=2.10.1`. pip resolves that conflict silently by
+# backtracking all the way to zhipuai 1.0.7, which has no `ZhipuAI` class, so
+# describe_image / generate_image / generate_video die with
+# "cannot import name 'ZhipuAI' from 'zhipuai'". 2.1.5 itself runs fine on
+# pyjwt 2.13 — only the pin is wrong. cachetools is its one dep nothing else
+# brings in (httpx and pydantic already come with fastapi and the SDK).
+cachetools>=4.2.2
 # Downscales photos before sending them to the vision model, which rejects
 # anything over 5MB / 6000px — a phone photo exceeds both.
 pillow>=10.0.0
