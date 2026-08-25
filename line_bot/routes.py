@@ -50,6 +50,45 @@ async def callback(request: Request) -> str:
     return "OK"
 
 
+# display names change rarely and every lookup is an API round trip, so cache.
+_display_names: dict[str, str] = {}
+
+
+def _describe_speaker(event) -> str | None:
+    """Who sent this message, for group and room conversations.
+
+    A session is keyed by conversation, not person, so in a group everyone shares
+    one workspace and one MEMORY.md. Without naming the speaker the agent files
+    every member's preferences under a single anonymous "you". Returns None for
+    1:1 chats, where the conversation already *is* the person.
+    """
+    source = event.source
+    if source.type == "user":
+        return None
+
+    user_id = getattr(source, "user_id", None)
+    if not user_id:
+        return "（不明成員）"
+
+    name = _display_names.get(user_id)
+    if name is None:
+        try:
+            if source.type == "group":
+                profile = line_bot_api.get_group_member_profile(source.group_id, user_id)
+            else:
+                profile = line_bot_api.get_room_member_profile(source.room_id, user_id)
+            name = profile.display_name
+        except LineBotApiError:
+            # Happens when the member has not added the bot as a friend.
+            name = "（不明成員）"
+        if len(_display_names) > 500:
+            _display_names.clear()
+        _display_names[user_id] = name
+
+    # The id suffix disambiguates two members with the same display name.
+    return f"{name}（成員代號 {user_id[-6:]}）"
+
+
 def _reply_or_push(reply_token: str, source_id: str, messages) -> None:
     """Reply with the token, falling back to a push if it already expired.
 
@@ -89,10 +128,12 @@ def _messages_for(result) -> list:
     return messages
 
 
-def _run_and_reply(user_message: str, source_id: str, reply_token: str) -> None:
+def _run_and_reply(
+    user_message: str, source_id: str, reply_token: str, speaker: str | None = None
+) -> None:
     try:
         # The `@prompt` persona is loaded from disk inside build_system_prompt.
-        result = run_sync(user_message, source_id)
+        result = run_sync(user_message, source_id, speaker=speaker)
         print(
             f"[agent] session={source_id} turns={result.num_turns} "
             f"tools={[c.name for c in result.tool_calls]} blocked={result.blocked}"
@@ -156,7 +197,7 @@ def handle_message(event) -> None:
     # agent turn can take minutes.
     threading.Thread(
         target=_run_and_reply,
-        args=(user_message, source_id, reply_token),
+        args=(user_message, source_id, reply_token, _describe_speaker(event)),
         daemon=True,
     ).start()
 

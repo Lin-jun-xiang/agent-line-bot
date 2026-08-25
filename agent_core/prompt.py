@@ -83,7 +83,29 @@ def _recent_uploads(session_dir) -> str:
     return f"{listing}\n最上面那個是最新的。要看內容用 describe_image。"
 
 
-def build_system_prompt(session_id: str, persona: str | None = None) -> str:
+def _speaker_block(speaker: str | None) -> str:
+    """Who is talking, for multi-person conversations.
+
+    A session is one *conversation*, not one person: in a LINE group everyone
+    shares the workspace and the MEMORY.md. Without this the agent cannot tell
+    members apart and files everyone's preferences under one anonymous "you".
+    """
+    if not speaker:
+        return ""
+    return f"""
+## 現在跟你說話的人
+{speaker}
+
+這是多人對話。記憶裡的偏好一定要標明是誰的，不要混在一起；
+回答時也要看清楚是誰在問，不要把別人講過的事當成他講的。
+"""
+
+
+def build_system_prompt(
+    session_id: str,
+    persona: str | None = None,
+    speaker: str | None = None,
+) -> str:
     session = workspace.session_dir(session_id)
     shared = workspace.shared_dir()
     skills = workspace.skills_dir()
@@ -136,6 +158,7 @@ def build_system_prompt(session_id: str, persona: str | None = None) -> str:
   （價格、新聞、賽事、誰在任、什麼上市了），一律用 web_search 查過再講，不要憑印象。
 - 需要精確到幾點幾分，用 run_shell 跑一下取系統時間。
 
+{_speaker_block(speaker)}
 ## 對方傳過來的圖片
 {uploads}
 

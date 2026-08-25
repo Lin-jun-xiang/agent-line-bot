@@ -201,6 +201,7 @@ class AgentRunner:
         max_turns: int,
         model: str | None,
         persona: str | None,
+        speaker: str | None,
         allow_bash: bool,
         stderr_sink: list[str],
     ) -> ClaudeAgentOptions:
@@ -239,7 +240,7 @@ class AgentRunner:
             # "You are Claude Code, Anthropic's official CLI", which would blow the
             # AI寶寶 persona the moment anyone asks who she is. prompt.py carries
             # the tool-usage discipline the preset would otherwise provide.
-            system_prompt=build_system_prompt(sandbox.session_id, persona),
+            system_prompt=build_system_prompt(sandbox.session_id, persona, speaker),
             model=model or self.profile.model,
             env=self.profile.env(),
             mcp_servers={
@@ -297,6 +298,7 @@ class AgentRunner:
         max_turns: int | None = None,
         model: str | None = None,
         persona: str | None = None,
+        speaker: str | None = None,
         allow_bash: bool | None = None,
     ) -> AsyncIterator[dict]:
         """The real run. Always executes on the agent loop."""
@@ -320,6 +322,7 @@ class AgentRunner:
             max_turns=max_turns or settings.MAX_TURNS,
             model=model,
             persona=persona,
+            speaker=speaker,
             allow_bash=settings.ALLOW_BASH if allow_bash is None else allow_bash,
         )
 

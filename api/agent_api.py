@@ -38,6 +38,11 @@ class RunRequest(BaseModel):
     max_turns: int | None = Field(default=None, ge=1, le=200)
     model: str | None = Field(default=None, description="Override model, e.g. glm-4.7")
     persona: str | None = Field(default=None, description="Extra system instructions")
+    speaker: str | None = Field(
+        default=None,
+        description="Who is talking. Set for multi-person conversations so the "
+        "agent attributes remembered facts to the right person.",
+    )
     allow_bash: bool | None = Field(default=None)
 
 
@@ -112,6 +117,7 @@ async def run(req: RunRequest) -> dict:
         max_turns=req.max_turns,
         model=req.model,
         persona=req.persona,
+        speaker=req.speaker,
         allow_bash=req.allow_bash,
     )
     return result.to_dict()
