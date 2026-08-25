@@ -2,7 +2,7 @@
 
 從零到一個能用的 LINE Bot。照著做完就會通。
 
-**流程**：取得金鑰 → Fork 專案 → 連到 Render → 設環境變數 → 設 Webhook → 加好友
+**流程**：取得金鑰 → Fork 專案 → Render Blueprint → 掛磁碟 → 確認健康 → 設 Webhook → 加好友 → 防休眠
 
 ---
 
@@ -44,50 +44,64 @@
 
 ---
 
-## 步驟 3：在 Render 建立服務
+## 步驟 3：在 Render 用 Blueprint 建立服務
 
-> **Runtime 一定要選 Docker。** Render 原生的 Python 環境沒有 Node，而這個 agent 的核心是
-> `claude` CLI（Node 程式），裝不起來。專案根目錄已經備好 `Dockerfile`。
+> **Runtime 必須是 Docker。** Render 原生的 Python 環境沒有 Node，而這個 agent 的核心是
+> `claude` CLI（Node 程式），裝不起來。
 
-最省事的方式是用專案根目錄的 `render.yaml`（Blueprint）——runtime、health check、
-環境變數都寫在裡面，不用在網頁上一項一項填。
+專案根目錄的 `render.yaml` 已經把 runtime、region、health check、環境變數全部寫好了，
+所以用 **Blueprint** 部署——不用在網頁上一項一項填，也不會漏設定。
 
-### 方式 A：用 Blueprint（建議）
+### 3-1. 建立 Blueprint Instance
 
 1. 前往 [Render](https://render.com/) 註冊並登入
-2. 點 **New +** → **Blueprint**
-3. 選你 fork 的 repo，Render 會讀取 `render.yaml`
-4. 它會提示你輸入標了 `sync: false` 的密鑰（`GLM_API_KEY`、兩個 LINE token）
-5. **Apply**
+2. 左側選單點 **Blueprints**（不是 New + → Web Service）
+3. 點右上角 **New Blueprint Instance**
+4. **Connect a repository** 區塊裡選你 fork 的 repo
+   - 第一次使用要先按 **GitHub** 授權，並允許 Render 存取該 repo
+   - 找不到 repo 的話點 **Configure account** 調整授權範圍
+5. Render 會讀取 repo 根目錄的 `render.yaml` 並顯示它即將建立的資源，
+   應該只有一個 web service：`agent-line-bot`
 
-### 方式 B：手動建立 Web Service
+### 3-2. 填入密鑰
 
-1. **New +** → **Web Service** → **Build and deploy from a Git repository**
-2. 選你 fork 的 repo
-3. **Language** 選 **Docker**（選了之後 Build / Start Command 欄位會消失，那些由
-   `Dockerfile` 決定）
-4. Branch `main`，Instance Type 先用 `Free`
-5. 往下設[環境變數](#步驟-4設定環境變數)
+`render.yaml` 裡標了 `sync: false` 的變數不會存在 git，所以這一步 Render 會直接跳出欄位要你填：
 
-### 已經有 Python runtime 的服務怎麼轉
+| 欄位 | 貼上 |
+|---|---|
+| `GLM_API_KEY` | 步驟 1-1 的金鑰 |
+| `LINE_CHANNEL_SECRET` | 步驟 1-2 的 Channel secret |
+| `LINE_CHANNEL_ACCESS_TOKEN` | 步驟 1-2 的 Channel access token |
 
-> **Render 的 Dashboard 不能改 runtime。** 官方文件寫得很明確：
+其他變數（`AGENT_TIMEZONE`、`AGENT_TOOL_PROFILE`…）已經寫在 `render.yaml` 裡，不用填。
+
+### 3-3. Apply
+
+1. 上方 **Blueprint Name** 可以隨便取，只是給你自己看的
+2. 點 **Apply** / **Create Resources**
+3. Render 開始 build，跳到步驟 [盯第一次 build](#盯第一次-build)
+
+### 已經有服務要轉成 Docker
+
+如果你之前手動建過 Web Service、而且是原生 Python runtime
+（Build Command 是 `poetry install`、Start Command 是 `python main.py`），
+**不要重建**——用 Blueprint 接管就好，服務網址會保留。
+
+> **Dashboard 不能改 runtime。** 官方文件寫得很明確：
 > *"Changing a service's runtime in the Render Dashboard is not currently supported."*
-> Settings → Build → Source → Edit 那個 **Update Source** 對話框只能換 repo 和 branch，
-> 沒有 Runtime 欄位。
+> Settings → Build → Source → **Edit** 那個 **Update Source** 對話框裡只有
+> Git Provider / Public Git Repository / Existing Image 三個頁籤，**沒有 Runtime 欄位**。
+> 但 Blueprint 可以改。
 
-如果你之前用原生 Python runtime 建過服務（Build Command 是 `poetry install`、
-Start Command 是 `python main.py`），三個選擇：
+做法：
 
-**B-1. 用 Blueprint 接管（不會掉網址）**
+1. 先確認 `render.yaml` 的 `name` 與現有服務名稱**完全相同**
+   （預設是 `agent-line-bot`；不同就把 `render.yaml` 改成你的服務名）
+2. 依照 [3-1](#3-1-建立-blueprint-instance) 建立 Blueprint Instance，選同一個 repo
+3. Render 會偵測到同名服務，顯示為 **update** 而不是 create
+4. **Apply** 之後它會把 runtime 換成 docker 並重新部署
 
-1. Dashboard → **Blueprints** → **New Blueprint Instance**
-2. 選你 fork 的 repo
-3. 確認 `render.yaml` 裡的 `name` 與現有服務同名（預設是 `agent-line-bot`），
-   Render 就會接管既有服務而不是另開一個
-4. **Apply**
-
-**B-2. 用 API 改**
+如果你偏好用 API：
 
 ```bash
 curl -X PATCH https://api.render.com/v1/services/<SERVICE_ID> \
@@ -96,17 +110,17 @@ curl -X PATCH https://api.render.com/v1/services/<SERVICE_ID> \
   -d '{"serviceDetails":{"runtime":"docker"}}'
 ```
 
-**B-3. 砍掉重建**
-
-最直接，但服務網址會變，Webhook URL 要重新填一次。
+`SERVICE_ID` 在服務頁面的網址裡（`srv-` 開頭），API key 在
+**Account Settings → API Keys** 產生。
 
 ---
 
-## 步驟 4：設定環境變數
+## 步驟 4：環境變數對照表
 
-在建立畫面的 **Environment Variables** 區塊（或建立後到 **Environment** 分頁）加入：
+用 Blueprint 的話這一步已經做完了，這裡只是給你查對照。
+之後要改就到服務的 **Environment** 分頁。
 
-### 必填
+### 必填（Blueprint 會跳出來問）
 
 | Key | Value | 來源 |
 |---|---|---|
@@ -114,7 +128,7 @@ curl -X PATCH https://api.render.com/v1/services/<SERVICE_ID> \
 | `LINE_CHANNEL_SECRET` | `你的 secret` | 步驟 1-2 |
 | `LINE_CHANNEL_ACCESS_TOKEN` | `你的 token` | 步驟 1-2 |
 
-### 建議填
+### 建議填（`render.yaml` 已預設）
 
 | Key | 建議值 | 說明 |
 |---|---|---|
@@ -161,7 +175,26 @@ bot 會忘記所有人。
 > **不要**把 `.env` commit 進 repo。`.gitignore` 已經擋掉了，金鑰一律用 Render 的
 > Environment Variables 提供。
 
-按 **Create Web Service**，等 build 完成（第一次約 5-10 分鐘，要裝 Node 和相依套件）。
+按 **Create Web Service**（或 Blueprint 的 **Apply**），等 build 完成。
+
+### 盯第一次 build
+
+第一次約 5-10 分鐘，因為要裝 Node 和所有相依套件。進入服務的 **Logs** 分頁看進度，
+依序應該會出現：
+
+| 階段 | log 裡會看到 |
+|---|---|
+| 裝系統套件 | `Setting up nodejs` |
+| 裝 Claude Code CLI | `added N packages` |
+| 裝 Python 套件 | `Successfully installed claude-agent-sdk fastapi ...` |
+| 啟動 | `Uvicorn running on http://0.0.0.0:8090` |
+| 健檢通過 | Render 頁面上狀態轉為綠色的 **Live** |
+
+`[startup] LINE routes disabled:` 這行代表 LINE 憑證沒設好，`/agent/*` 還是能用，
+但 bot 不會回話。
+
+build 失敗的話，錯誤通常在裝 Node 那段——把 log 的最後 30 行留下來對照
+[疑難排解](#疑難排解)。
 
 ---
 
@@ -184,23 +217,55 @@ Render 的檔案系統是暫時的——**每次部署或重啟都會清空**，
 
 ---
 
-## 步驟 6：設定 Webhook
+## 步驟 6：確認服務活著
 
-1. 部署完成後，Render 會給你一個網址，例如 `https://your-app.onrender.com`
-2. 先開 `https://your-app.onrender.com/agent/health` 確認狀態是 `ok`
-   （如果是 `degraded`，`problems` 欄位會直接告訴你缺什麼）
+打開 `https://your-app.onrender.com/agent/health`。要看到：
 
-   順便把 **Settings → Health Checks → Health Check Path** 填成 `/agent/health`，
-   Render 才知道服務是不是真的活著。用 Blueprint 的話這項已經設好了。
-3. 回到 LINE Developers → 你的 Channel → **Messaging API**
-4. Webhook URL 填 `https://your-app.onrender.com/callback`
-5. 打開 **Use webhook**，點 **Verify** 應該顯示 Success
+```json
+{
+  "status": "ok",
+  "problems": [],
+  "provider": { "api_key_set": true, "model": "glm-4.7-flash" },
+  "sandbox": {
+    "workspace_root": "/data/workspace",
+    "workspace": "writable",
+    "survives_redeploy": true
+  },
+  "claude_cli": "/usr/bin/claude"
+}
+```
+
+逐項對照：
+
+| 欄位 | 應該是 | 不對的話 |
+|---|---|---|
+| `status` | `ok` | 看 `problems`，它會直接說缺什麼 |
+| `provider.api_key_set` | `true` | `GLM_API_KEY` 沒設或拼錯 |
+| `sandbox.workspace` | `writable` | 磁碟沒掛好，或 `AGENT_WORKSPACE_ROOT` 指到唯讀路徑 |
+| `sandbox.survives_redeploy` | `true` | 沒掛持久化磁碟，重新部署會忘記所有人（見步驟 5） |
+| `claude_cli` | 一個路徑 | image 裡的 CLI 沒裝成功，回頭看 build log |
+
+### 設定 Health Check Path
+
+**Settings** → **Health Checks** → **Health Check Path** 填 `/agent/health`。
+
+Render 會定期打這個路徑，失敗就重啟服務。沒設的話 Render 只看 port 有沒有開，
+服務其實壞了也不會知道。用 Blueprint 部署的話這項已經設好了。
+
+---
+
+## 步驟 7：設定 Webhook
+
+1. 回到 LINE Developers → 你的 Channel → **Messaging API**
+2. Webhook URL 填 `https://your-app.onrender.com/callback`
+3. 打開 **Use webhook**，點 **Verify** 應該顯示 Success
+4. 同一頁往下確認 **自動回應訊息** 是關閉的，否則官方罐頭訊息會蓋掉 bot 的回覆
 
 <img src="images/line-webhook.png" width="70%" />
 
 ---
 
-## 步驟 7：加好友開始用
+## 步驟 8：加好友開始用
 
 到 [LINE Official Account Manager](https://manager.line.biz/account) → 選你的 bot →
 **加好友工具** → 產生 QR code，掃描加入。
@@ -209,7 +274,7 @@ Render 的檔案系統是暫時的——**每次部署或重啟都會清空**，
 
 ---
 
-## 步驟 8：防止服務休眠（免費方案）
+## 步驟 9：防止服務休眠（免費方案）
 
 免費方案閒置 15 分鐘會休眠，冷啟動要幾十秒，第一則訊息很可能等到 LINE webhook timeout。
 
@@ -234,12 +299,37 @@ Render 的檔案系統是暫時的——**每次部署或重啟都會清空**，
 
 **2. 會休眠**
 
-見步驟 8。
+見步驟 9。
 
 **3. 512MB RAM 很緊**
 
 實測單個 `claude` 子行程約 300–390MB RSS，加上 Python 服務會接近上限。同時多人使用可能
 OOM。真的要穩定就升級 instance。
+
+---
+
+## 疑難排解
+
+先看是**建置階段**還是**執行階段**的問題：Render 服務頁面的 **Events** 分頁會標明是
+build failed 還是 deploy failed，**Logs** 分頁才是實際輸出。
+
+| 症狀 | 原因與處理 |
+|---|---|
+| Build 卡在 / 失敗於 `deb.nodesource.com` | 網路或套件庫暫時性問題，先重試 **Manual Deploy → Clear build cache & deploy** |
+| `poetry: not found` 或跑的是 `python main.py` | 服務還是原生 Python runtime，`Dockerfile` 沒被使用。見[轉成 Docker](#已經有服務要轉成-docker) |
+| Deploy 成功但 `/agent/health` 回 `degraded` | 看 `problems` 陣列，它會指名缺哪個環境變數 |
+| `claude_cli` 是 `null` | image 裡的 CLI 沒裝成功，回頭看 build log 的 `npm install -g` 那段 |
+| `sandbox.workspace` 是 `unwritable` | 磁碟沒掛在 `/data`，或 `AGENT_WORKSPACE_ROOT` 指到唯讀路徑 |
+| log 出現 `[startup] LINE routes disabled` | LINE 兩個憑證沒設好。`/agent/*` 仍可用，但 bot 不會回話 |
+| 傳圖片後她說「我看不了這張圖片」 | 看 log 的 `[describe_image]` 那行會印出真正的錯誤。多半是圖片超過視覺模型的 5MB / 6000px 限制，或三個視覺模型同時被限流 |
+| LINE Verify 按下去失敗 | 服務在休眠（等 30 秒再按）、或 Webhook URL 漏了 `/callback` |
+| Bot 只回官方罐頭訊息 | LINE 的「自動回應訊息」沒關掉 |
+| Bot 完全不回，log 也沒動靜 | Webhook URL 填錯，或 **Use webhook** 沒打開 |
+| 回應要一兩分鐘 | 免費模型的限流。見[效能調校](performance.md) |
+| 服務莫名重啟，log 有 `Out of memory` | 512MB 不夠，升級 instance |
+| 部署後 bot 忘記所有人 | 沒掛持久化磁碟，見步驟 5 |
+
+改完環境變數要按 **Manual Deploy → Deploy latest commit** 才會生效。
 
 ---
 
