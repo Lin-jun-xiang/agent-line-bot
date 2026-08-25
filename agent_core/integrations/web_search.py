@@ -1,27 +1,50 @@
-"""Lightweight free web search module using DuckDuckGo native backends.
+"""Free web search, no API key required.
 
-Designed for low-memory environments (≤500 MB RAM).
-No API key required.
+Backend history, because it matters for debugging:
 
-NOTE: duckduckgo-search v8.x defaults to Bing backend which gets blocked
-on cloud IPs (Render, Railway, etc.). We bypass this by calling the native
-DuckDuckGo HTML/Lite backends directly — these are much less likely to be
-blocked since they hit html.duckduckgo.com / lite.duckduckgo.com.
+`duckduckgo-search` was renamed to `ddgs` and its DuckDuckGo endpoints now answer
+`202 Ratelimit` to essentially every server-side caller — the HTML and Lite
+"native backends" this module used to prefer included. All three fell through to
+the same empty result, so every search silently returned "找不到相關搜尋結果"
+and the agent, having no way to tell "the search broke" from "nothing exists",
+told users their question had no answer.
 
-Search priority:
-1. DDG HTML backend  (html.duckduckgo.com)
-2. DDG Lite backend  (lite.duckduckgo.com)
-3. DDG default/Bing  (fallback, may fail on cloud)
+So we no longer depend on DuckDuckGo at all. `ddgs` brokers several engines; we
+walk them in order and take the first that answers. DuckDuckGo stays in the list
+but last, since it is the one that rate-limits.
+
+Set AGENT_SEARCH_BACKENDS to override the order (comma-separated).
 """
 
+import os
 import random
 import re
 
 import requests
 from bs4 import BeautifulSoup
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 
-# Rotate user-agent to reduce blocking
+# Ordered by how reliably they answer from a datacentre IP (Render, Railway).
+# `auto` is deliberately not used: it includes the rate-limited DuckDuckGo
+# backend and will happily return one junk Wikipedia hit instead of falling
+# through to an engine that actually has the answer.
+DEFAULT_BACKENDS = ["google", "brave", "bing", "yandex", "mullvad_brave", "duckduckgo"]
+
+BACKENDS = [
+    b.strip()
+    for b in os.environ.get("AGENT_SEARCH_BACKENDS", ",".join(DEFAULT_BACKENDS)).split(",")
+    if b.strip()
+]
+
+# Distinct from "no results": the agent must be able to tell the user "I could not
+# search" rather than "that does not exist".
+SEARCH_UNAVAILABLE = (
+    "搜尋服務目前無法使用（所有搜尋後端都失敗）。"
+    "這是工具的問題，不代表查不到這個東西——請告訴使用者搜尋暫時壞掉，不要說找不到資料。"
+)
+NO_RESULTS = "搜尋成功，但這個查詢沒有任何結果。"
+
+# Rotate user-agent to reduce blocking when we scrape the result pages.
 _USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
@@ -45,66 +68,34 @@ def _format_results(results: list[dict]) -> str:
     return "\n\n".join(formatted)
 
 
-def _search_ddg_html(ddgs: DDGS, query: str, max_results: int) -> list[dict]:
-    """Use DDG native HTML backend (html.duckduckgo.com)."""
-    try:
-        results = ddgs._text_html(keywords=query, max_results=max_results)
-        print(f"[DDG-HTML] results count: {len(results)}")
-        return results
-    except Exception as e:
-        print(f"[DDG-HTML] error: {e}")
-        return []
+def _search(query: str, max_results: int) -> tuple[list[dict], bool]:
+    """Try each backend in turn.
 
-
-def _search_ddg_lite(ddgs: DDGS, query: str, max_results: int) -> list[dict]:
-    """Use DDG native Lite backend (lite.duckduckgo.com)."""
-    try:
-        results = ddgs._text_lite(keywords=query, max_results=max_results)
-        print(f"[DDG-Lite] results count: {len(results)}")
-        return results
-    except Exception as e:
-        print(f"[DDG-Lite] error: {e}")
-        return []
-
-
-def _search_ddg_default(ddgs: DDGS, query: str, max_results: int) -> list[dict]:
-    """Use DDG default backend (Bing) as last resort."""
-    try:
-        results = list(ddgs.text(query, region="wt-wt", max_results=max_results))
-        print(f"[DDG-Default] results count: {len(results)}")
-        return results
-    except Exception as e:
-        print(f"[DDG-Default] error: {e}")
-        return []
+    Returns (results, reachable). `reachable` is False only when every backend
+    errored — that is a broken tool, not an empty result set, and the caller
+    must say so differently.
+    """
+    reachable = False
+    for backend in BACKENDS:
+        try:
+            results = DDGS().text(query, max_results=max_results, backend=backend)
+        except Exception as exc:  # noqa: BLE001 - ratelimit, timeout, parse errors
+            print(f"[search:{backend}] {type(exc).__name__}: {exc}")
+            continue
+        reachable = True
+        if results:
+            print(f"[search:{backend}] {len(results)} results for {query!r}")
+            return list(results), True
+        print(f"[search:{backend}] no results")
+    return [], reachable
 
 
 def web_search(query: str, max_results: int = 5) -> str:
-    """Search the web using DuckDuckGo with automatic backend fallback.
-
-    Priority: DDG HTML → DDG Lite → DDG Default (Bing).
-
-    The HTML and Lite backends hit DuckDuckGo's own servers directly,
-    which are far less likely to block cloud server IPs compared to Bing.
-
-    Args:
-        query: The search query string.
-        max_results: Maximum number of results to return.
-
-    Returns:
-        A formatted string containing search results (title + snippet + url).
-    """
-    with DDGS() as ddgs:
-        for name, search_fn in [
-            ("DDG-HTML", _search_ddg_html),
-            ("DDG-Lite", _search_ddg_lite),
-            ("DDG-Default", _search_ddg_default),
-        ]:
-            results = search_fn(ddgs, query, max_results)
-            if results:
-                print(f"[web_search] Used backend: {name}")
-                return _format_results(results)
-
-    return "找不到相關搜尋結果，所有搜尋引擎皆無法取得資料。"
+    """Search the web and return title + snippet + url for each hit."""
+    results, reachable = _search(query, max_results)
+    if results:
+        return _format_results(results)
+    return NO_RESULTS if reachable else SEARCH_UNAVAILABLE
 
 
 # --------------- Page Content Fetching ---------------
@@ -149,9 +140,7 @@ def _fetch_page_content(url: str, max_chars: int = 3000) -> str:
         return f"[抓取失敗: {e}]"
 
 
-def _format_deep_results(
-    results: list[dict], max_chars_per_page: int = 2000
-) -> str:
+def _format_deep_results(results: list[dict], max_chars_per_page: int = 2000) -> str:
     """Format search results with full page content scraped from each URL."""
     if not results:
         return ""
@@ -178,29 +167,13 @@ def deep_web_search(
     max_results: int = 3,
     max_chars_per_page: int = 2000,
 ) -> str:
-    """Search DDG then fetch full page content from top results. 100% free.
+    """Search, then scrape the top pages for detail the snippets do not carry.
 
-    Same backend fallback as web_search (HTML → Lite → Default),
-    but additionally scrapes the actual web pages to get detailed content
-    instead of just short snippets.
-
-    Args:
-        query: The search query string.
-        max_results: Maximum number of pages to fetch (keep small to save time).
-        max_chars_per_page: Max characters to extract per page.
-
-    Returns:
-        A formatted string with full page content for each search result.
+    Snippets alone are useless for the questions people actually ask a bot —
+    a stock price, today's weather — because the number lives in the page, not
+    the snippet.
     """
-    with DDGS() as ddgs:
-        for name, search_fn in [
-            ("DDG-HTML", _search_ddg_html),
-            ("DDG-Lite", _search_ddg_lite),
-            ("DDG-Default", _search_ddg_default),
-        ]:
-            results = search_fn(ddgs, query, max_results)
-            if results:
-                print(f"[deep_web_search] Used backend: {name}")
-                return _format_deep_results(results, max_chars_per_page)
-
-    return "找不到相關搜尋結果，所有搜尋引擎皆無法取得資料。"
+    results, reachable = _search(query, max_results)
+    if results:
+        return _format_deep_results(results, max_chars_per_page)
+    return NO_RESULTS if reachable else SEARCH_UNAVAILABLE

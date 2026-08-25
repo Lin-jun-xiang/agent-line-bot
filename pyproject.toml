@@ -22,7 +22,7 @@ python-dotenv = "^1.0.0"
 requests = "^2.31.0"
 beautifulsoup4 = "^4.12.0"
 lxml = "^5.2.2"
-duckduckgo-search = "^8.1.1"
+ddgs = "^9.15.0"
 
 # Tools: image search (modules/image_crawler.py)
 icrawler = "^0.6.7"
