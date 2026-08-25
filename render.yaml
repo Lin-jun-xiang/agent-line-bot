@@ -54,6 +54,15 @@ services:
       # - key: SERPAPI_API_KEY
       #   sync: false
 
+      # Deliberately NOT set: send_file needs our public HTTPS origin to hand
+      # LINE an image URL, but it works this out on its own — from the host of
+      # the first signature-verified webhook, with Render's own
+      # RENDER_EXTERNAL_URL covering the window before that. Setting it by hand
+      # would just be one more thing to get wrong when the service is renamed.
+      # Set it only for a custom domain or a proxy in front.
+      # - key: PUBLIC_BASE_URL
+      #   value: https://your-custom-domain.example
+
     # Persistent storage is not available on the free plan. Without it the bot
     # forgets everyone on each redeploy. To keep memory: move `plan` above to
     # `starter` and uncomment this block.

@@ -114,6 +114,32 @@ SKILLS_DIRNAME = "_skills"
 # Where skills are copied from into <workspace_root>/_skills (read-only for the agent).
 SKILLS_SOURCE = Path(os.environ.get("AGENT_SKILLS_SOURCE", str(PROJECT_ROOT / "skills")))
 
+# Images people send arrive in <session>/uploads/. In a busy group that is a few
+# MB per photo with nothing to stop it, so keep only the newest few: on the free
+# plan the disk is small, and on a paid disk uploads share the same volume as
+# everyone's MEMORY.md — filling it up would take the memory down with it.
+# Only the most recent upload is ever referred to in practice (see UPLOADS_SHOWN
+# in prompt.py, which lists 5), so a small number loses nothing.
+UPLOADS_DIRNAME = "uploads"
+MAX_UPLOADS = int(os.environ.get("AGENT_MAX_UPLOADS", "8"))
+
+# Sidecar recording who sent each upload. A group shares one workspace, so
+# without it the agent cannot answer "back up the photos <person> sent" honestly
+# and makes an attribution up instead. Lives inside uploads/ but is not itself
+# an upload — go through workspace.upload_files() so it is never listed or pruned.
+UPLOADS_MANIFEST = "_senders.json"
+
+# Cap on a cached image description replayed into later prompts.
+DESCRIBE_MAX_CHARS = int(os.environ.get("AGENT_DESCRIBE_MAX_CHARS", "400"))
+
+# Roster of people the bot has actually heard from in a group conversation.
+# LINE's member-list API (get_group_member_ids) is restricted to verified
+# accounts and 403s for everyone else, so an enumerated member list is simply
+# not available — without this the agent has nothing to answer "how many people
+# are in this group" with, and guesses. Capped because it goes in every prompt.
+MEMBERS_FILENAME = "_members.json"
+MAX_MEMBERS_SHOWN = int(os.environ.get("AGENT_MAX_MEMBERS_SHOWN", "20"))
+
 # --- Run limits ------------------------------------------------------------
 MAX_TURNS = int(os.environ.get("AGENT_MAX_TURNS", "30"))
 RUN_TIMEOUT_S = float(os.environ.get("AGENT_RUN_TIMEOUT", "300"))
@@ -147,13 +173,30 @@ MCP_TOOLS = [
     for t in os.environ.get(
         "AGENT_MCP_TOOLS",
         "run_shell,web_search,fetch_url,generate_image,search_image,"
-        "describe_image,generate_video",
+        "describe_image,generate_video,send_file",
     ).split(",")
     if t.strip()
 ]
 
 # Where we persist "our session key -> claude session id" so conversations resume.
 SESSION_INDEX = WORKSPACE_ROOT / "_sessions.json"
+
+# --- Public file links -----------------------------------------------------
+# LINE only displays an image it can fetch over public HTTPS, so sending a file
+# from the workspace needs our own public origin. Both of these are optional:
+# agent_core.filelinks prefers the host learned from a verified LINE webhook, so
+# a normal deploy needs no configuration at all. Set PUBLIC_BASE_URL only for a
+# custom domain or when something other than LINE must build links.
+PUBLIC_BASE_URL = (os.environ.get("PUBLIC_BASE_URL") or "").rstrip("/")
+# Injected automatically by Render; covers the window before the first webhook.
+RENDER_EXTERNAL_URL = (os.environ.get("RENDER_EXTERNAL_URL") or "").rstrip("/")
+
+# How long a signed file link stays valid. LINE fetches the image within seconds
+# of the message being delivered, so this only has to survive a slow retry.
+FILE_LINK_TTL_S = int(os.environ.get("AGENT_FILE_LINK_TTL", "3600"))
+# Optional dedicated key for signing links. Left unset, filelinks falls back to
+# the LINE channel secret and then the GLM key, so nothing extra is required.
+FILE_LINK_SECRET = os.environ.get("AGENT_FILE_LINK_SECRET", "")
 
 
 @dataclass(frozen=True)

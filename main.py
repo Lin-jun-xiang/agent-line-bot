@@ -4,7 +4,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
-from api import agent_api
+from api import agent_api, files_api
 
 app = FastAPI(
     title="chatgpt-line-bot",
@@ -13,6 +13,9 @@ app = FastAPI(
 )
 
 app.include_router(agent_api)
+# Mounted even when LINE is disabled: /agent/run also returns artifacts, and a
+# signed link is useful for inspecting what the agent produced.
+app.include_router(files_api)
 
 # The LINE router needs channel credentials. Keep the agent API usable without them
 # so you can develop and test the agent standalone.

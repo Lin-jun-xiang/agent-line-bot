@@ -16,10 +16,13 @@ import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from agent_core import commands, memory, workspace
+from agent_core import commands, memory, settings, workspace
 
-UPLOADS_DIRNAME = "uploads"
-UPLOADS_SHOWN = 5
+UPLOADS_DIRNAME = settings.UPLOADS_DIRNAME
+# Keep this <= settings.MAX_UPLOADS, otherwise the prompt promises files that
+# the upload rotation has already deleted.
+UPLOADS_SHOWN = min(5, settings.MAX_UPLOADS)
+MEMBERS_SHOWN = settings.MAX_MEMBERS_SHOWN
 
 TIMEZONE = os.environ.get("AGENT_TIMEZONE", "Asia/Taipei")
 _WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"]
@@ -62,25 +65,102 @@ PERSONA = """
 """.strip()
 
 
-def _recent_uploads(session_dir) -> str:
-    """List the newest files in uploads/, newest first.
+def _recent_uploads(session_id: str) -> str:
+    """List the newest files in uploads/, newest first, with who sent each one.
 
     The agent has no Glob in the default tool profile, so without this it cannot
     discover what the user just sent and ends up asking for the filename. Cheap
     to include (a few tokens) and it removes a whole class of dead end.
+
+    The sender matters in groups: everyone shares one workspace, so "the photos
+    李中 sent" is only answerable if the attribution is right here. Uploads with
+    no recorded sender are marked unknown rather than left blank — blank reads as
+    "you may assume", and the agent duly assumes.
     """
-    folder = session_dir / UPLOADS_DIRNAME
-    if not folder.is_dir():
-        return "（目前沒有）"
-    files = sorted(
-        (p for p in folder.iterdir() if p.is_file()),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )[:UPLOADS_SHOWN]
+    files = workspace.upload_files(session_id)[:UPLOADS_SHOWN]
     if not files:
         return "（目前沒有）"
-    listing = "\n".join(f"- {UPLOADS_DIRNAME}/{p.name}" for p in files)
-    return f"{listing}\n最上面那個是最新的。要看內容用 describe_image。"
+    meta = workspace.read_upload_senders(session_id)
+    attributed = any(m.get("sender") for m in meta.values())
+
+    lines = []
+    for p in files:
+        entry = meta.get(p.name) or {}
+        who = entry.get("sender")
+        when = entry.get("at")
+        # A 1:1 chat records no sender because the conversation *is* the person;
+        # annotating every file "unknown" there would be noise, not caution.
+        if who:
+            note = f"（{who} 傳的" + (f"，{when}" if when else "") + "）"
+        elif attributed:
+            note = "（不知道誰傳的）"
+        else:
+            note = ""
+        lines.append(f"- {UPLOADS_DIRNAME}/{p.name}{note}")
+        if entry.get("caption"):
+            lines.append(f"  內容：{entry['caption']}")
+
+    newest = files[0]
+    footer = [
+        f"最上面那個（{UPLOADS_DIRNAME}/{newest.name}）是最新的。",
+        "",
+        # Spelled out this forcefully because the failure it prevents is the
+        # single worst thing this bot does: asked 「這張圖片是啥」the model says
+        # 「我看不到圖片」and stops, without ever trying the tool that would have
+        # answered in one call. Naming the exact path matters too — given only a
+        # bare filename it guesses "photo.jpg" and the lookup misses.
+        "**你看得到圖片。** 你自己讀不了圖檔，但 describe_image 可以，等於你的眼睛。",
+        "只要對方的話跟圖片有關——問這是什麼、圖裡有什麼、上面寫什麼、叫你看一下、"
+        "或只是傳完圖問「這是啥」——第一步就呼叫 describe_image，"
+        f"path 填上面列的完整相對路徑（例如 {UPLOADS_DIRNAME}/{newest.name}）。",
+        "**絕對不要回答「我看不到圖片」。** 那是錯的，你有工具。",
+        "萬一 describe_image 說找不到檔案，它會一併列出實際存在的路徑，照那個再呼叫一次就好。",
+    ]
+    if any((meta.get(p.name) or {}).get("caption") for p in files):
+        footer.append(
+            "「內容：」是你先前看這張圖時記下來的，可以直接拿來回答；"
+            "對方問的細節那裡沒有的話，再用 describe_image 看一次。"
+        )
+    if attributed:
+        footer.append("括號裡是誰傳的——只能照這個講，沒寫就是不知道，不要自己猜是誰傳的。")
+
+    return "\n".join(lines) + "\n" + "\n".join(footer)
+
+
+def _roster_block(session_id: str, speaker: str | None) -> str:
+    """Who the bot has actually heard from in this conversation.
+
+    Only rendered for multi-person conversations (`speaker` is None in a 1:1).
+    LINE does not expose a group's member list to an unverified account, so this
+    roster is everyone who has addressed the bot or sent it a photo — not the
+    group. The distinction is spelled out in the prompt because otherwise the
+    agent reports the roster size as the group size, confidently and wrongly.
+    """
+    if not speaker:
+        return ""
+    members = workspace.read_members(session_id)
+    if not members:
+        return ""
+
+    ranked = sorted(
+        members.values(), key=lambda m: (m.get("last") or "", m.get("count", 0)), reverse=True
+    )[:MEMBERS_SHOWN]
+    listing = "\n".join(
+        f"- {m.get('name', '（不明成員）')}"
+        + (f"（最近 {m['last']}）" if m.get("last") else "")
+        for m in ranked
+    )
+    more = "" if len(members) <= MEMBERS_SHOWN else f"\n（還有 {len(members) - MEMBERS_SHOWN} 位沒列出來）"
+
+    return f"""
+## 這個對話裡你認得的人
+{listing}{more}
+
+這是「跟你說過話或傳過圖給你的人」，共 {len(members)} 位——**不是群組人數**。
+LINE 不會告訴你群組裡實際有幾個人，你也沒有辦法查。
+被問到人數或成員，就照這份名單講，並且說明這只是你認得的人，可能還有沒開口的。
+絕對不要猜一個數字。
+"""
 
 
 def _speaker_block(speaker: str | None) -> str:
@@ -112,7 +192,7 @@ def build_system_prompt(
     remembered = memory.ensure(session_id)
     # An explicit override from the caller wins; otherwise use the stored `@prompt`.
     persona = persona or memory.read_persona(session_id)
-    uploads = _recent_uploads(session)
+    uploads = _recent_uploads(session_id)
 
     # Everything above the `--- 本次對話 ---` marker is byte-identical across every
     # session and every turn. That matters: the provider caches on prompt prefix,
@@ -132,6 +212,9 @@ def build_system_prompt(
   產出媒體後不用把網址貼在文字裡，系統會自己把圖片影片送出去。
 - 對方傳圖片過來會存在 uploads/。要看圖片內容、回答跟圖有關的問題，用 describe_image，
   不要用 Read（你自己看不到圖）。
+- 對方叫你把工作區裡的圖片或影片「傳回來」「給我看」「發出來」：用 send_file 帶那個檔案的路徑，
+  對方就會直接看到圖。只吃 .jpg .png .mp4。要傳好幾張就多呼叫幾次。
+  光是把路徑或檔名寫在文字裡沒有用，對方看不到檔案。
 - 要用技能：先讀那個技能的 SKILL.md，照著它寫的做，不要自己猜指令。
 - 做不到的時候，直接說做不到跟為什麼，順便給一個可行的替代方案。
 
@@ -158,7 +241,7 @@ def build_system_prompt(
   （價格、新聞、賽事、誰在任、什麼上市了），一律用 web_search 查過再講，不要憑印象。
 - 需要精確到幾點幾分，用 run_shell 跑一下取系統時間。
 
-{_speaker_block(speaker)}
+{_speaker_block(speaker)}{_roster_block(session_id, speaker)}
 ## 對方傳過來的圖片
 {uploads}
 

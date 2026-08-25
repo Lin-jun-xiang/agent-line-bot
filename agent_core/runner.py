@@ -245,7 +245,9 @@ class AgentRunner:
             env=self.profile.env(),
             mcp_servers={
                 tools.SERVER_NAME: tools.build_tool_server(
-                    artifacts, cwd=str(sandbox.session_dir)
+                    artifacts,
+                    cwd=str(sandbox.session_dir),
+                    session_id=sandbox.session_id,
                 )
             },
             tools=available,

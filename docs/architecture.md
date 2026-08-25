@@ -53,7 +53,8 @@ LINE webhook 與 REST API 走的是**同一個** `AgentRunner`，所以兩邊的
 | `agent_core/settings.py` | 把 Claude Code 指向 GLM：base URL、模型對應、CLI 路徑自動偵測、工具範圍、執行上限 |
 | `agent_core/workspace.py` | 工作區目錄結構、session id 消毒、路徑包含判斷（`resolve_within`）、session 索引 |
 | `agent_core/guard.py` | 沙箱：`PreToolUse` hook + `can_use_tool` |
-| `agent_core/tools.py` | in-process MCP server：`run_shell` / `web_search` / `fetch_url` / `generate_image` / `search_image` / `generate_video` |
+| `agent_core/tools.py` | in-process MCP server：`run_shell` / `web_search` / `fetch_url` / `generate_image` / `search_image` / `describe_image` / `generate_video` / `send_file` |
+| `agent_core/filelinks.py` | 公開位址解析（設定 → webhook 學到的 → Render 注入）＋ 檔案連結的 HMAC 簽章與到期 |
 | `agent_core/memory.py` | 每個對話一份 `MEMORY.md` 的讀寫與長度上限 |
 | `agent_core/prompt.py` | 人設、工作區說明、當前日期、記憶注入 |
 | `agent_core/runner.py` | 組裝 `ClaudeAgentOptions`、在專屬 event loop 上執行、把 SDK 訊息轉成事件 dict |

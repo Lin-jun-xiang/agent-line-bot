@@ -63,6 +63,39 @@ def _encode_image(path) -> tuple[str | None, str | None]:
         return None, f"{type(exc).__name__}: {exc}"
 
 
+IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp")
+
+
+def _available_images(cwd: str | None, limit: int = 10) -> str:
+    """The image paths that actually exist, for a failed lookup to retry with.
+
+    Relative to the agent's cwd, because that is what it must pass back in.
+    """
+    from pathlib import Path
+
+    base = Path(cwd) if cwd else None
+    if base is None or not base.is_dir():
+        return "Could not list the workspace to suggest alternatives."
+
+    found = sorted(
+        (
+            p
+            for p in base.rglob("*")
+            if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES
+        ),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )[:limit]
+    if not found:
+        return "There are no image files in this workspace at all."
+
+    listing = "\n".join(f"  {p.relative_to(base).as_posix()}" for p in found)
+    return (
+        "These images DO exist here (newest first) — call describe_image again "
+        f"with one of these exact paths:\n{listing}"
+    )
+
+
 async def describe_image_impl(raw: str, question: str, cwd: str | None) -> str:
     """Answer a question about an image file. Module-level so it is testable.
 
@@ -76,7 +109,11 @@ async def describe_image_impl(raw: str, question: str, cwd: str | None) -> str:
     if target is None:
         return f"describe_image refused: '{raw}' is outside the workspace"
     if not target.is_file():
-        return f"no such image: {raw}"
+        # Actionable, not just "no". The model routinely guesses a bare filename
+        # when the file is under uploads/, and a dead-end error turns that near
+        # miss into "抱歉，我看不到圖片" — indistinguishable, to the user, from
+        # having no vision at all. Handing back the real paths lets it retry.
+        return f"no such image: {raw}\n{_available_images(cwd)}"
 
     encoded, encode_error = _encode_image(target)
     if encoded is None:
@@ -113,6 +150,52 @@ async def describe_image_impl(raw: str, question: str, cwd: str | None) -> str:
     return f"describe_image failed on every vision model — {detail}"
 
 
+def send_file_impl(
+    raw: str, cwd: str | None, session_id: str, artifacts: list[dict]
+) -> str:
+    """Publish a workspace file as an artifact so the LINE layer sends it.
+
+    Module-level so it is testable, like describe_image_impl.
+
+    The media generators return URLs that already live on the public internet; a
+    file on our own disk has none, so it has to be given one. Everything about
+    that link — origin, expiry, signature — is decided in filelinks; here we only
+    check the file is ours and is a format LINE will actually render.
+    """
+    from agent_core import filelinks
+
+    target = _resolve_in_workspace(raw, cwd)
+    if target is None:
+        return f"send_file refused: '{raw}' is outside the workspace"
+    if not target.is_file():
+        return f"no such file: {raw}"
+
+    kind = filelinks.kind_for(target)
+    if kind is None:
+        allowed = "/".join(sorted(filelinks.IMAGE_SUFFIXES | filelinks.VIDEO_SUFFIXES))
+        return (
+            f"send_file cannot send '{target.name}' — LINE only displays {allowed}. "
+            "Convert it first, or describe the contents in words instead."
+        )
+
+    url = filelinks.public_url(session_id, target)
+    if url is None:
+        # Almost always "we do not know our own public address yet", which no
+        # amount of retrying by the model will fix. Say so plainly, and log it,
+        # rather than letting the model paraphrase a mystery into an apology.
+        print(f"[send_file] no public link for {target} (base_url={filelinks.base_url()!r})")
+        return (
+            "send_file is unavailable: this server does not know its own public "
+            "address yet. Tell the user the file is saved but cannot be sent right now."
+        )
+
+    artifacts.append({"kind": kind, "url": url, "prompt": target.name})
+    return (
+        f"Sent {target.name} to the user — they can see it now. "
+        "Do not repeat the URL in your reply."
+    )
+
+
 def _resolve_in_workspace(raw: str, cwd: str | None):
     """Resolve a path the model handed us, refusing anything outside the sandbox.
 
@@ -129,11 +212,14 @@ def _resolve_in_workspace(raw: str, cwd: str | None):
     return workspace.resolve_within(raw, roots, base=base)
 
 
-def build_tool_server(artifacts: list[dict], cwd: str | None = None):
+def build_tool_server(
+    artifacts: list[dict], cwd: str | None = None, session_id: str = ""
+):
     """Create the MCP server for one agent run.
 
     `artifacts` is appended to as media is produced; the runner reads it after
     the run finishes. `cwd` is the session workspace that run_shell executes in.
+    `session_id` is needed by send_file to sign a link into the right workspace.
     """
 
     @tool(
@@ -314,6 +400,18 @@ def build_tool_server(artifacts: list[dict], cwd: str | None = None):
             print(f"[search_image] {type(exc).__name__}: {exc}")
             return _text(f"search_image failed: {exc}")
 
+    @tool(
+        "send_file",
+        "Send an image or video file from the workspace to the person you are "
+        "talking to, so they see the picture itself. Use this whenever they ask "
+        "you to show, send or return a file you have. .jpg .png .mp4 only.",
+        {"path": str},
+    )
+    async def send_file(args: dict[str, Any]) -> dict:
+        return _text(
+            send_file_impl(args.get("path", ""), cwd, session_id, artifacts)
+        )
+
     return create_sdk_mcp_server(
         name=SERVER_NAME,
         version="1.0.0",
@@ -325,6 +423,7 @@ def build_tool_server(artifacts: list[dict], cwd: str | None = None):
             search_image,
             describe_image,
             generate_video,
+            send_file,
         ],
     )
 
@@ -340,5 +439,6 @@ TOOL_NAMES = [
         "search_image",
         "describe_image",
         "generate_video",
+        "send_file",
     )
 ]

@@ -70,11 +70,16 @@ allow / deny 規則和 permission mode **之前**，而且 hook 的 deny 連 `by
 
 ## 自行讀檔的工具
 
-`describe_image` 和 `generate_video` 會自己打開工作區裡的檔案，而 `PreToolUse` hook
-只看得到 `path` 這種不透明的字串參數，攔不住它們。所以這兩個工具在**函式內部**呼叫
+`describe_image`、`generate_video` 和 `send_file` 會自己打開工作區裡的檔案，而 `PreToolUse`
+hook 只看得到 `path` 這種不透明的字串參數，攔不住它們。所以這幾個工具在**函式內部**呼叫
 `tools._resolve_in_workspace()` 做同一套包含判斷，測試裡也單獨驗證這條路徑。
 
 新增任何會自己碰檔案系統的工具時，記得走同一個函式，不要以為 hook 會幫你擋。
+
+`send_file` 還多一層：它把檔案交給 LINE 去抓，所以那個路徑會變成一個對外的網址。
+`filelinks.public_url()` 因此**再做一次**包含判斷（對 session 目錄），
+`/files` 路由收到請求時**又做一次**——簽章只證明連結是我們發的，不證明它現在還指向界內。
+一次都不能省：symlink 可以在發連結之後才被放進工作區。
 
 ## 已知限制
 
@@ -101,7 +106,8 @@ python -m pytest tests/test_sandbox.py -v
 - `Grep` 指向工作區外
 - shell 的相對路徑（放行）／絕對路徑逃逸／`..` 逃逸／家目錄展開／破壞性指令
 - 惡意 session id（`../../escape`、`..`、`/`、`_shared`、`C:\Windows`）
-- 自行讀檔的工具（`describe_image`、`generate_video`）的路徑範圍
+- 自行讀檔的工具（`describe_image`、`generate_video`、`send_file`）的路徑範圍
+- 檔案連結：過期、簽章錯、改路徑、`..` 逃逸、未知公開位址（`tests/test_filelinks.py`）
 
 另外 `/agent/selftest` 裡的 `sandbox_escape` 案例會實際叫 agent 去讀 `../../main.py`
 和 `config.py`，確認端對端真的被擋。
