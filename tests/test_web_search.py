@@ -27,9 +27,11 @@ class _FakeDDGS:
 
     plan: dict = {}
     tried: list = []
+    kwargs_seen: dict = {}
 
     def text(self, query, max_results=5, backend=None, **kwargs):
         type(self).tried.append(backend)
+        type(self).kwargs_seen = kwargs
         outcome = type(self).plan.get(backend, [])
         if isinstance(outcome, Exception):
             raise outcome
@@ -38,7 +40,7 @@ class _FakeDDGS:
 
 @pytest.fixture
 def fake(monkeypatch):
-    _FakeDDGS.plan, _FakeDDGS.tried = {}, []
+    _FakeDDGS.plan, _FakeDDGS.tried, _FakeDDGS.kwargs_seen = {}, [], {}
     monkeypatch.setattr(ws, "DDGS", _FakeDDGS)
     monkeypatch.setattr(ws, "BACKENDS", ["google", "brave", "bing"])
     return _FakeDDGS
@@ -87,7 +89,37 @@ def test_deep_search_makes_the_same_distinction(fake, monkeypatch):
     assert "page text" in ws.deep_web_search("q")
 
 
-def test_duckduckgo_is_tried_last_if_at_all():
-    # It is the backend that rate-limits; preferring it is what broke search.
-    if "duckduckgo" in ws.DEFAULT_BACKENDS:
-        assert ws.DEFAULT_BACKENDS.index("duckduckgo") == len(ws.DEFAULT_BACKENDS) - 1
+def test_the_region_is_passed_to_ddgs(fake):
+    # Without it ddgs defaults to us-en, which restricts a Chinese query to
+    # US/English pages and is how "原相 股價" ended up on English spam farms.
+    fake.plan = {"google": [HIT]}
+    ws._search("原相 股價", 3)
+    assert fake.kwargs_seen.get("region") == ws.REGION
+
+
+# --- The bug that made every search return junk ----------------------------
+# ddgs does not raise on a backend it cannot serve. `google`, `bing` and
+# `yandex` ship disabled and `mullvad_brave` never existed, so naming any of
+# them left ddgs with an empty engine list and it silently fell back to `auto`,
+# which shuffles all engines and fronts wikipedia/grokipedia. The first
+# iteration therefore always "succeeded" with a random engine's output — SEO
+# spam included — and the engines that work were never tried.
+
+
+def test_every_default_backend_actually_exists_in_ddgs():
+    from ddgs.engines import ENGINES
+
+    available = set(ENGINES.get("text", {}))
+    unusable = [b for b in ws.DEFAULT_BACKENDS if b not in available]
+    assert not unusable, (
+        f"{unusable} are not servable text backends; ddgs would silently fall "
+        f"back to shuffled 'auto'. Available: {sorted(available)}"
+    )
+
+
+def test_unusable_backends_are_filtered_out_of_the_live_list():
+    from ddgs.engines import ENGINES
+
+    available = set(ENGINES.get("text", {}))
+    assert ws.BACKENDS, "no backend left to search with"
+    assert all(b in available for b in ws.BACKENDS)

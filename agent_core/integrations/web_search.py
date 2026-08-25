@@ -13,7 +13,18 @@ So we no longer depend on DuckDuckGo at all. `ddgs` brokers several engines; we
 walk them in order and take the first that answers. DuckDuckGo stays in the list
 but last, since it is the one that rate-limits.
 
-Set AGENT_SEARCH_BACKENDS to override the order (comma-separated).
+Set AGENT_SEARCH_BACKENDS to override the order (comma-separated), and
+AGENT_SEARCH_REGION to override the locale.
+
+One ddgs behaviour to know about, because it silently destroyed result quality
+here: a backend name ddgs does not recognise is not an error. `google`, `bing`
+and `yandex` ship with `disabled = True`, and `mullvad_brave` does not exist at
+all, so asking for any of them leaves ddgs with an empty engine list and it
+falls back to `auto` — which *shuffles* every engine and pushes `wikipedia` and
+`grokipedia` to the front. That first "google" attempt therefore always
+succeeded with whatever a random engine coughed up (including SEO spam), the
+loop returned, and the engines that actually work were never reached. So we
+validate names against ddgs' own registry and drop the ones it cannot serve.
 """
 
 import os
@@ -23,18 +34,37 @@ import re
 import requests
 from bs4 import BeautifulSoup
 from ddgs import DDGS
+from ddgs.engines import ENGINES
 
 # Ordered by how reliably they answer from a datacentre IP (Render, Railway).
-# `auto` is deliberately not used: it includes the rate-limited DuckDuckGo
-# backend and will happily return one junk Wikipedia hit instead of falling
-# through to an engine that actually has the answer.
-DEFAULT_BACKENDS = ["google", "brave", "bing", "yandex", "mullvad_brave", "duckduckgo"]
+# `auto` is deliberately not used: it shuffles, so the same query gets a
+# different engine (and a different quality of answer) every time.
+DEFAULT_BACKENDS = ["brave", "duckduckgo", "startpage", "mojeek", "yahoo"]
 
-BACKENDS = [
+_REQUESTED = [
     b.strip()
     for b in os.environ.get("AGENT_SEARCH_BACKENDS", ",".join(DEFAULT_BACKENDS)).split(",")
     if b.strip()
 ]
+
+_AVAILABLE = set(ENGINES.get("text", {}))
+BACKENDS = [b for b in _REQUESTED if b in _AVAILABLE]
+
+if _unknown := [b for b in _REQUESTED if b not in _AVAILABLE]:
+    # Loud on purpose: passing these through would silently degrade every search
+    # to a random `auto` pick, which reads as "the bot answers nonsense".
+    print(
+        f"[search] ignoring unusable backends {_unknown} — ddgs offers "
+        f"{sorted(_AVAILABLE)}"
+    )
+if not BACKENDS:
+    BACKENDS = sorted(_AVAILABLE)
+    print(f"[search] no usable backend configured, falling back to {BACKENDS}")
+
+# ddgs defaults to region="us-en", which restricts results to US/English pages
+# (`lr=`/`cr=` on the engines that support it). For a Traditional-Chinese query
+# that is how "台積電 股價" drifts into English and Vietnamese spam farms.
+REGION = os.environ.get("AGENT_SEARCH_REGION", "tw-tzh")
 
 # Distinct from "no results": the agent must be able to tell the user "I could not
 # search" rather than "that does not exist".
@@ -78,7 +108,9 @@ def _search(query: str, max_results: int) -> tuple[list[dict], bool]:
     reachable = False
     for backend in BACKENDS:
         try:
-            results = DDGS().text(query, max_results=max_results, backend=backend)
+            results = DDGS().text(
+                query, region=REGION, max_results=max_results, backend=backend
+            )
         except Exception as exc:  # noqa: BLE001 - ratelimit, timeout, parse errors
             print(f"[search:{backend}] {type(exc).__name__}: {exc}")
             continue

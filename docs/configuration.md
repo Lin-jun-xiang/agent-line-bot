@@ -100,12 +100,24 @@ GLM_FREE_MODEL=glm-5.2
 | `AGENT_SKILLS_SOURCE` | `./skills` | 技能來源目錄 |
 | `AGENT_MAX_UPLOADS` | `8` | 每個對話最多留幾張圖，超過就刪最舊的 |
 | `AGENT_MAX_MEMBERS_SHOWN` | `20` | 群組名冊在 prompt 裡最多列幾個人 |
-| `AGENT_SEARCH_BACKENDS` | `google,brave,bing,yandex,mullvad_brave,duckduckgo` | 搜尋引擎的嘗試順序 |
+| `AGENT_SEARCH_BACKENDS` | `brave,duckduckgo,startpage,mojeek,yahoo` | 搜尋引擎的嘗試順序 |
+| `AGENT_SEARCH_REGION` | `tw-tzh` | 搜尋地區／語言。ddgs 預設 `us-en` |
 
-`AGENT_SEARCH_BACKENDS` 依序試，第一個有回應的就採用。預設把 DuckDuckGo 放在
-最後是因為它現在對伺服器端呼叫幾乎一律回 `202 Ratelimit`——舊版程式碼只用它，
-結果每次搜尋都空手而回，而 agent 分不出「搜尋壞了」和「查不到」，就跟使用者說
-查無此事。現在這兩種情況回傳的字串不同，agent 會照實說搜尋壞掉。
+`AGENT_SEARCH_BACKENDS` 依序試，第一個有回應的就採用。每個引擎都會間歇性地擋掉
+資料中心 IP，所以清單要留幾個備援；同一個查詢換個時間點常常是不同引擎回答的。
+
+名字必須是 ddgs 真的能服務的引擎（目前是 `brave`、`duckduckgo`、`startpage`、
+`mojeek`、`yahoo`、`wikipedia`、`grokipedia`）。**ddgs 遇到不認識的 backend 不會
+報錯**：`google`、`bing`、`yandex` 在 ddgs 裡是 `disabled = True`，`mullvad_brave`
+根本不存在，指定它們會讓 ddgs 拿到空的引擎清單，然後靜默退回 `auto`——而 `auto`
+會把所有引擎隨機洗牌並把 `wikipedia`、`grokipedia` 插到最前面。舊的預設值裡有四個
+是這種名字，所以迴圈第一輪永遠「成功」，拿到的是隨機引擎吐出來的東西（包括 SEO
+垃圾站），真正能用的引擎一次都沒被試到。啟動時會驗證這些名字並把不能用的印出來剔掉。
+
+`AGENT_SEARCH_REGION` 沒設過的話 ddgs 用 `us-en`，會把繁中查詢限制在美英網頁
+（`lr=`／`cr=` 參數），中文問題因此容易漂到英文垃圾站。
+
+搜尋全部失敗和真的查無資料回傳的字串不同，agent 會照實說搜尋壞掉，不會說查無此事。
 
 群組名冊記的是「跟 bot 說過話或傳過圖的人」，不是群組全體成員——LINE 的
 `get_group_member_ids` 對未認證帳號會 403，拿不到完整名單。沒開口的人不會被記錄，
