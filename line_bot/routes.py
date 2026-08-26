@@ -76,6 +76,76 @@ async def callback(request: Request) -> str:
 # display names change rarely and every lookup is an API round trip, so cache.
 _display_names: dict[str, str] = {}
 
+# (user_id, display_name) of this bot, fetched once — see _bot_identity.
+_bot_info: tuple[str | None, str | None] | None = None
+
+
+def _bot_identity() -> tuple[str | None, str | None]:
+    """This bot's own (user_id, display_name), cached for the process lifetime.
+
+    Needed to recognise being @-mentioned: the webhook says *who* was mentioned,
+    and only by comparing against ourselves can we tell "@Bot 幫我查" from a
+    member tagging a colleague. Both halves are used — see _strip_bot_mention.
+    """
+    global _bot_info
+    if _bot_info is None:
+        try:
+            info = line_bot_api.get_bot_info()
+            _bot_info = (info.user_id, info.display_name)
+        except LineBotApiError as exc:
+            # Don't cache a failure: a transient error here would otherwise
+            # disable mention handling until the next restart.
+            print(f"[line] get_bot_info failed: {exc}")
+            return None, None
+    return _bot_info
+
+
+def _strip_bot_mention(event, text: str) -> str | None:
+    """The message minus the @mention of this bot, or None if we weren't tagged.
+
+    LINE sends the mentions of a text message as `message.mention.mentionees`,
+    each with the character offset of the tag inside `text`, so the tag can be
+    cut out and the rest handed to the agent as the actual question.
+
+    The v2 model classes this file uses drop the webhook's `isSelf` flag (see
+    linebot/models/mentionee.py — extra keys are discarded), so identity is
+    established by user_id, with the display name as a fallback for the case
+    where LINE omits the id because the mentioned member never added the bot.
+    """
+    mention = getattr(event.message, "mention", None)
+    mentionees = getattr(mention, "mentionees", None) or []
+    if not mentionees:
+        return None
+
+    bot_id, bot_name = _bot_identity()
+    if not bot_id and not bot_name:
+        return None
+    tag = f"@{bot_name}" if bot_name else None
+
+    for mentionee in mentionees:
+        index, length = mentionee.index, mentionee.length
+        if index is None or length is None:
+            continue
+        tagged = text[index : index + length]
+        # user_id matches us, or — when LINE withheld the id — the text at that
+        # offset is our own @name. A member tagged by name is skipped by both.
+        if mentionee.user_id:
+            if mentionee.user_id != bot_id:
+                continue
+        elif not (tag and tagged == tag):
+            continue
+
+        if not tagged.startswith("@"):
+            # The offsets are LINE's, counted its way; a supplementary-plane
+            # emoji earlier in the message shifts them against Python's. Find
+            # the tag by name instead rather than cutting the wrong characters.
+            if not tag or tag not in text:
+                return text.strip()
+            return text.replace(tag, "", 1).strip()
+        return (text[:index] + text[index + length :]).strip()
+
+    return None
+
 
 def _now_stamp() -> str:
     """Local wall-clock for upload bookkeeping, in the bot's configured zone."""
@@ -279,6 +349,12 @@ def handle_message(event) -> None:
     source_type = event.source.type
     source_id = getattr(event.source, f"{source_type}_id", None)
 
+    # Cut the @mention out before anything reads the text, so "@小幫手 @init"
+    # reaches the command handlers below as plain "@init".
+    mentioned = _strip_bot_mention(event, user_message) if source_type != "user" else None
+    if mentioned is not None:
+        user_message = mentioned
+
     # Answered locally: instant, costs no tokens, and always accurate.
     if user_message.strip().lower() in commands.help_triggers():
         _reply_or_push(reply_token, source_id, TextSendMessage(text=commands.help_text()))
@@ -312,10 +388,20 @@ def handle_message(event) -> None:
         return
 
     if source_type != "user":
-        # In groups the bot only answers when addressed.
-        if not user_message.startswith("@chat"):
+        # In groups the bot only answers when addressed — either by a real LINE
+        # @mention, or by the @chat prefix, which stays supported because not
+        # every client produces a mention object (pasted text, some desktop
+        # versions) and because members are used to it.
+        if mentioned is None:
+            if not user_message.startswith("@chat"):
+                return
+            user_message = user_message.replace("@chat", "", 1).strip()
+
+        if not user_message:
+            # Tagged with nothing to say. Answering the empty string wastes a
+            # full agent turn to produce a greeting we can send for free.
+            _reply_or_push(reply_token, source_id, TextSendMessage(text="在，有什麼需要？"))
             return
-        user_message = user_message.replace("@chat", "", 1).strip()
 
     # Fire and forget: the webhook must return within LINE's timeout, but an
     # agent turn can take minutes.

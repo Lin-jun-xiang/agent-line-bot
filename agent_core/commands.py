@@ -11,7 +11,7 @@ from __future__ import annotations
 # (triggers, 說明) — the first trigger is the canonical form shown to users.
 COMMANDS: list[tuple[tuple[str, ...], str]] = [
     (("@help", "--help", "@說明"), "列出這張說明"),
-    (("@chat",), "在群組裡跟我說話（一對一不需要前綴）"),
+    (("@chat",), "在群組裡叫我的另一種寫法（直接 @ tag 我也可以；一對一不用）"),
     (("@prompt",), "改我的個性，例如 @prompt 你是個嚴肅的助理。不帶內容就還原預設"),
     (("@init",), "重開對話，但記得你的偏好"),
     (("@forget",), "清掉所有關於你的記憶和檔案"),
