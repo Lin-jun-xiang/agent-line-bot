@@ -1,4 +1,4 @@
-"""Free web search, no API key required.
+"""Free web search, no API key required — with optional You.com backend.
 
 Backend history, because it matters for debugging:
 
@@ -12,6 +12,11 @@ told users their question had no answer.
 So we no longer depend on DuckDuckGo at all. `ddgs` brokers several engines; we
 walk them in order and take the first that answers. DuckDuckGo stays in the list
 but last, since it is the one that rate-limits.
+
+You.com (`youcom`) is an optional backend that uses the keyless MCP free profile
+by default — no API key, no credit card. Set `AGENT_SEARCH_BACKENDS=youcom` to
+try it first, or add it to the chain: `AGENT_SEARCH_BACKENDS=youcom,brave`.
+Set `YOUCOM_API_KEY` to use the authenticated REST API for more results.
 
 Set AGENT_SEARCH_BACKENDS to override the order (comma-separated), and
 AGENT_SEARCH_REGION to override the locale.
@@ -36,10 +41,15 @@ from bs4 import BeautifulSoup
 from ddgs import DDGS
 from ddgs.engines import ENGINES
 
+from agent_core.integrations.youcom_search import youcom_search as _youcom_search
+
 # Ordered by how reliably they answer from a datacentre IP (Render, Railway).
 # `auto` is deliberately not used: it shuffles, so the same query gets a
 # different engine (and a different quality of answer) every time.
+# `youcom` is the You.com keyless search backend — set AGENT_SEARCH_BACKENDS
+# to include it; it is not a ddgs engine, so it is handled separately.
 DEFAULT_BACKENDS = ["brave", "duckduckgo", "startpage", "mojeek", "yahoo"]
+YOUCOM_BACKEND = "youcom"
 
 _REQUESTED = [
     b.strip()
@@ -47,16 +57,23 @@ _REQUESTED = [
     if b.strip()
 ]
 
+# ddgs-valid text engines
 _AVAILABLE = set(ENGINES.get("text", {}))
-BACKENDS = [b for b in _REQUESTED if b in _AVAILABLE]
+# youcom is not a ddgs engine, so we keep it separate
+_BACKENDS_DDGS = [b for b in _REQUESTED if b != YOUCOM_BACKEND and b in _AVAILABLE]
+_HAS_YOUCOM = YOUCOM_BACKEND in _REQUESTED
 
-if _unknown := [b for b in _REQUESTED if b not in _AVAILABLE]:
+if _unknown := [b for b in _REQUESTED if b != YOUCOM_BACKEND and b not in _AVAILABLE]:
     # Loud on purpose: passing these through would silently degrade every search
     # to a random `auto` pick, which reads as "the bot answers nonsense".
     print(
         f"[search] ignoring unusable backends {_unknown} — ddgs offers "
         f"{sorted(_AVAILABLE)}"
     )
+
+# Build the full backend list: youcom first if requested, then ddgs backends.
+BACKENDS = ([YOUCOM_BACKEND] if _HAS_YOUCOM else []) + _BACKENDS_DDGS
+
 if not BACKENDS:
     BACKENDS = sorted(_AVAILABLE)
     print(f"[search] no usable backend configured, falling back to {BACKENDS}")
@@ -101,6 +118,10 @@ def _format_results(results: list[dict]) -> str:
 def _search(query: str, max_results: int) -> tuple[list[dict], bool]:
     """Try each backend in turn.
 
+    Supports ddgs engines and the optional `youcom` backend.
+    `youcom` uses the You.com keyless MCP free profile by default
+    (or authenticated REST API when YOUCOM_API_KEY is set).
+
     Returns (results, reachable). `reachable` is False only when every backend
     errored — that is a broken tool, not an empty result set, and the caller
     must say so differently.
@@ -108,9 +129,12 @@ def _search(query: str, max_results: int) -> tuple[list[dict], bool]:
     reachable = False
     for backend in BACKENDS:
         try:
-            results = DDGS().text(
-                query, region=REGION, max_results=max_results, backend=backend
-            )
+            if backend == YOUCOM_BACKEND:
+                results = _youcom_search(query, max_results=max_results)
+            else:
+                results = DDGS().text(
+                    query, region=REGION, max_results=max_results, backend=backend
+                )
         except Exception as exc:  # noqa: BLE001 - ratelimit, timeout, parse errors
             print(f"[search:{backend}] {type(exc).__name__}: {exc}")
             continue
