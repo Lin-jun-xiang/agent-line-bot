@@ -24,6 +24,9 @@ load_dotenv()
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+# Opt-in backend for the existing web_search and fetch_url MCP tools.
+SEARCH_PROVIDER = os.environ.get("AGENT_SEARCH_PROVIDER", "ddgs").strip().lower()
+
 
 @lru_cache(maxsize=1)
 def find_cli() -> str | None:
