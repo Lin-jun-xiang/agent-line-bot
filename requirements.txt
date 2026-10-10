@@ -3,6 +3,7 @@
 
 # Agent harness (also needs the `claude` CLI — the Dockerfile installs it via npm)
 claude-agent-sdk>=0.2.144
+mcp>=1.26.0,<2
 
 # Web service
 fastapi>=0.120.0

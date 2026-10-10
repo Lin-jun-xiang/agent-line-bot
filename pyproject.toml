@@ -11,6 +11,7 @@ python = "^3.11"
 # Agent harness. Also needs the `claude` CLI on the host:
 #   npm i -g @anthropic-ai/claude-code
 claude-agent-sdk = "^0.2.144"
+mcp = "^1.26.0"
 
 # Web service
 fastapi = "^0.120.0"

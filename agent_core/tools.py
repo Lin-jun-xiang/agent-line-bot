@@ -41,6 +41,7 @@ def _encode_image(path) -> tuple[str | None, str | None]:
 
     Returns (base64, error).
     """
+
     import base64
     import io
 
@@ -222,6 +223,16 @@ def build_tool_server(
     `session_id` is needed by send_file to sign a link into the right workspace.
     """
 
+    # A stable opaque identifier across search/fetch calls in this conversation.
+    # Never send LINE user IDs or workspace paths to the remote service.
+    import hashlib
+    import uuid
+
+    search_session_id = (
+        hashlib.sha256(session_id.encode()).hexdigest()
+        if session_id else uuid.uuid4().hex
+    )
+
     @tool(
         "run_shell",
         # Kept deliberately terse. The built-in Bash tool's description is ~740
@@ -266,6 +277,16 @@ def build_tool_server(
 
         query = args.get("query", "")
         try:
+            if settings.SEARCH_PROVIDER == "parallel":
+                from agent_core.integrations.parallel_search import call_tool
+
+                return _text(await call_tool(
+                    "web_search",
+                    {"objective": query, "search_queries": [query]},
+                    search_session_id,
+                ))
+            if settings.SEARCH_PROVIDER != "ddgs":
+                raise ValueError(f"Unknown AGENT_SEARCH_PROVIDER: {settings.SEARCH_PROVIDER}")
             return _text(deep_web_search(query, max_results=3, max_chars_per_page=2500))
         except Exception as exc:  # noqa: BLE001 - surfaced back to the model
             return _text(f"web_search failed: {exc}")
@@ -281,6 +302,14 @@ def build_tool_server(
 
         url = args.get("url", "")
         try:
+            if settings.SEARCH_PROVIDER == "parallel":
+                from agent_core.integrations.parallel_search import call_tool
+
+                return _text(await call_tool(
+                    "web_fetch", {"urls": [url]}, search_session_id
+                ))
+            if settings.SEARCH_PROVIDER != "ddgs":
+                raise ValueError(f"Unknown AGENT_SEARCH_PROVIDER: {settings.SEARCH_PROVIDER}")
             resp = requests.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0"})
             resp.raise_for_status()
             soup = BeautifulSoup(resp.text, "lxml")

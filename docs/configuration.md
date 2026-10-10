@@ -102,6 +102,30 @@ GLM_FREE_MODEL=glm-5.2
 | `AGENT_MAX_MEMBERS_SHOWN` | `20` | 群組名冊在 prompt 裡最多列幾個人 |
 | `AGENT_SEARCH_BACKENDS` | `brave,duckduckgo,startpage,mojeek,yahoo` | 搜尋引擎的嘗試順序 |
 | `AGENT_SEARCH_REGION` | `tw-tzh` | 搜尋地區／語言。ddgs 預設 `us-en` |
+| `AGENT_SEARCH_PROVIDER` | `ddgs` | `ddgs`（原有搜尋與直接抓取網頁）或 `parallel` |
+
+### Parallel Search MCP（選用）
+
+Docker 部署會從 `requirements.txt` 安裝 MCP 依賴。本機也可以在新的虛擬環境中
+使用相同安裝方式（需 Python 3.11+ 與 Claude Code CLI）：
+
+```bash
+python -m venv .venv
+# Linux/macOS: source .venv/bin/activate
+# Windows: .venv\Scripts\activate
+python -m pip install -r requirements.txt
+python -m pip install --no-deps zhipuai==2.1.5.20250825
+```
+
+在 `.env` 設定 `AGENT_SEARCH_PROVIDER=parallel` 後重啟服務，既有的 `web_search`
+與 `fetch_url` 工具就會透過 [Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp)
+搜尋網路與取得網頁摘錄。使用 Streamable HTTP 連到 `https://search.parallel.ai/mcp`，
+不需要 Parallel 帳號或 API key；匿名搜尋使用 Fast mode，免費服務有速率限制。
+`AGENT_MCP_TOOLS` 仍須包含要使用的 `web_search`／`fetch_url`。
+
+`AGENT_SEARCH_BACKENDS` 與 `AGENT_SEARCH_REGION` 只影響 `ddgs`。
+Parallel 失敗時工具會回報錯誤，不會自動改用其他搜尋服務。
+移除 `AGENT_SEARCH_PROVIDER` 或設回 `ddgs` 即可恢復原本行為。
 
 `AGENT_SEARCH_BACKENDS` 依序試，第一個有回應的就採用。每個引擎都會間歇性地擋掉
 資料中心 IP，所以清單要留幾個備援；同一個查詢換個時間點常常是不同引擎回答的。
